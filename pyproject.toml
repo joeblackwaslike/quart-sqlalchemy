@@ -55,11 +55,6 @@ reverse_relative = true
 line_length = 88
 target_version = ["py37"]
 
-[tool.flake8]
-select = "B, E, F, W, B9, ISC"
-ignore = "E203, E501, E722, W503"
-max_line_length = 88
-
 [tool.pytest.ini_options]
 addopts = "--showlocals --asyncio-mode=auto"
 testpaths = ["tests"]
