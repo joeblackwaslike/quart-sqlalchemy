@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy
 from sqlalchemy.pool import NullPool
 
-from flask_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy import SQLAlchemy
 
 
 @pytest.fixture

@@ -1,5 +1,5 @@
-from flask_sqlalchemy import get_state
-from flask_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy import get_state
+from quart_sqlalchemy import SQLAlchemy
 
 
 def test_basic_binds(app, db):
@@ -78,13 +78,12 @@ def test_abstract_binds(app, db):
     assert "foo_bound_model" in metadata.tables
 
 
-def test_connector_cache(app):
+async def test_connector_cache(app):
     db = SQLAlchemy()
     db.init_app(app)
 
-    with app.app_context():
+    async with app.app_context():
         db.get_engine()
-
     connector = get_state(app).connectors[None]
     assert connector._app is app
 

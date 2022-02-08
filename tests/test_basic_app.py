@@ -1,31 +1,33 @@
-import flask
+import quart
 
-from flask_sqlalchemy import get_debug_queries
-from flask_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy import get_debug_queries
+from quart_sqlalchemy import SQLAlchemy
 
 
-def test_basic_insert(app, db, Todo):
+async def test_basic_insert(app, db, Todo):
     @app.route("/")
-    def index():
-        return "\n".join(x.title for x in Todo.query.all())
+    async def index():
+        return "\n".join(o.title for o in Todo.query.all())
 
     @app.route("/add", methods=["POST"])
-    def add():
-        form = flask.request.form
-        todo = Todo(form["title"], form["text"])
+    async def add():
+        data = await quart.request.get_json()
+        todo = Todo(data["title"], data["text"])
         db.session.add(todo)
         db.session.commit()
         return "added"
 
-    c = app.test_client()
-    c.post("/add", data=dict(title="First Item", text="The text"))
-    c.post("/add", data=dict(title="2nd Item", text="The text"))
-    rv = c.get("/")
-    assert rv.data == b"First Item\n2nd Item"
+    client = app.test_client()
+    async with app.app_context():
+        await client.post("/add", json=dict(title="First Item", text="The text"))
+        await client.post("/add", json=dict(title="2nd Item", text="The text"))
+        rv = await client.get("/")
+
+    assert await rv.get_data() == b"First Item\n2nd Item"
 
 
-def test_query_recording(app, db, Todo):
-    with app.test_request_context():
+async def test_query_recording(app, db, Todo):
+    async with app.test_request_context("/"):
         todo = Todo("Test 1", "test")
         db.session.add(todo)
         db.session.flush()
@@ -52,11 +54,11 @@ def test_helper_api(db):
     assert db.metadata == db.Model.metadata
 
 
-def test_persist_selectable(app, db, Todo, recwarn):
+async def test_persist_selectable(app, db, Todo, recwarn):
     """In SA 1.3, mapper.mapped_table should be replaced with
     mapper.persist_selectable.
     """
-    with app.test_request_context():
+    async with app.test_request_context("/"):
         todo = Todo("Test 1", "test")
         db.session.add(todo)
         db.session.commit()

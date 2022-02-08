@@ -1,7 +1,7 @@
 import sqlalchemy as sa
 
-from flask_sqlalchemy import BaseQuery
-from flask_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy import BaseQuery
+from quart_sqlalchemy import SQLAlchemy
 
 
 def test_sqlalchemy_includes():

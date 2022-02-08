@@ -3,16 +3,16 @@ import random
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
-from flask_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy import SQLAlchemy
 
 
-def test_default_session_scoping(app, db):
+async def test_default_session_scoping(app, db):
     class FOOBar(db.Model):
         id = db.Column(db.Integer, primary_key=True)
 
     db.create_all()
 
-    with app.test_request_context():
+    async with app.test_request_context("/"):
         fb = FOOBar()
         db.session.add(fb)
         assert fb in db.session

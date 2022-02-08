@@ -1,0 +1,65 @@
+[tool.poetry]
+name = "Quart-SQLAlchemy"
+version = "0.1.0"
+description = "A Quart extension for SQLAlchemy"
+authors = ["Joe Black <me@joeblack.nyc>"]
+license = "BSD-3-Clause"
+readme = "README.rst"
+repository = "https://github.com/joeblackwaslike/quart_sqlalchemy/"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+quart = "^0.16.3"
+SQLAlchemy = "^1.4"
+Werkzeug = "^2.0.3"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.0.0"
+pylint = "^2.12.2"
+flake8 = "^4.0.1"
+mypy = "^0.931"
+pytest-asyncio = "^0.18.0"
+tox = "^3.24.5"
+pycodestyle = "^2.8.0"
+black = "^22.1.0"
+isort = "^5.10.1"
+ipython = "^7.31"
+mock = "^4.0.3"
+pre-commit = "^2.17.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.isort]
+combine_as_imports = true
+force_grid_wrap = 0
+include_trailing_comma = true
+known_first_party = "quart_sqlalchemy, tests"
+line_length = 88
+multi_line_output = 3
+no_lines_before = "LOCALFOLDER"
+order_by_type = false
+reverse_relative = true
+
+[tool.black]
+line_length = 88
+target_version = ["py37"]
+
+[tool.flake8]
+select = "B, E, F, W, B9, ISC"
+ignore = "E203, E501, E722, W503"
+max_line_length = 88
+
+[tool.pytest.ini_options]
+addopts = "--showlocals --asyncio-mode=auto"
+testpaths = ["tests"]

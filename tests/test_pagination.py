@@ -1,7 +1,7 @@
 import pytest
 from werkzeug.exceptions import NotFound
 
-from flask_sqlalchemy import Pagination
+from quart_sqlalchemy import Pagination
 
 
 def test_basic_pagination():
@@ -27,40 +27,40 @@ def test_pagination_pages_when_total_is_none():
     assert p.pages == 0
 
 
-def test_query_paginate(app, db, Todo):
-    with app.app_context():
+async def test_query_paginate(app, db, Todo):
+    async with app.app_context():
         db.session.add_all([Todo("", "") for _ in range(100)])
         db.session.commit()
 
     @app.route("/")
-    def index():
+    async def index():
         p = Todo.query.paginate()
         return f"{len(p.items)} items retrieved"
 
     c = app.test_client()
     # request default
-    r = c.get("/")
+    r = await c.get("/")
     assert r.status_code == 200
     # request args
-    r = c.get("/?per_page=10")
-    assert r.data.decode("utf8") == "10 items retrieved"
+    r = await c.get("/?per_page=10")
+    assert (await r.get_data()).decode("utf8") == "10 items retrieved"
 
-    with app.app_context():
+    async with app.app_context():
         # query default
         p = Todo.query.paginate()
         assert p.total == 100
 
 
-def test_query_paginate_more_than_20(app, db, Todo):
-    with app.app_context():
+async def test_query_paginate_more_than_20(app, db, Todo):
+    async with app.app_context():
         db.session.add_all(Todo("", "") for _ in range(20))
         db.session.commit()
 
     assert len(Todo.query.paginate(max_per_page=10).items) == 10
 
 
-def test_paginate_min(app, db, Todo):
-    with app.app_context():
+async def test_paginate_min(app, db, Todo):
+    async with app.app_context():
         db.session.add_all(Todo(str(x), "") for x in range(20))
         db.session.commit()
 
@@ -75,8 +75,8 @@ def test_paginate_min(app, db, Todo):
         Todo.query.paginate(per_page=-1)
 
 
-def test_paginate_without_count(app, db, Todo):
-    with app.app_context():
+async def test_paginate_without_count(app, db, Todo):
+    async with app.app_context():
         db.session.add_all(Todo("", "") for _ in range(20))
         db.session.commit()
 

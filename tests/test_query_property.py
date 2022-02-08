@@ -1,10 +1,10 @@
 import pytest
 from werkzeug.exceptions import NotFound
 
-from flask_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy import SQLAlchemy
 
 
-def test_no_app_bound(app):
+async def test_no_app_bound(app):
     db = SQLAlchemy()
     db.init_app(app)
 
@@ -14,7 +14,7 @@ def test_no_app_bound(app):
     # If no app is bound to the SQLAlchemy instance, a
     # request context is required to access Model.query.
     pytest.raises(RuntimeError, getattr, Foo, "query")
-    with app.test_request_context():
+    async with app.test_request_context("/"):
         db.create_all()
         foo = Foo()
         db.session.add(foo)

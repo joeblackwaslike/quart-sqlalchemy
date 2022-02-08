@@ -1,5 +1,5 @@
-import flask
 import pytest
+import quart
 
 
 @pytest.fixture
@@ -8,30 +8,41 @@ def client(app, db, Todo):
     app.config["SQLALCHEMY_COMMIT_ON_TEARDOWN"] = True
 
     @app.route("/")
-    def index():
+    async def index():
         return "\n".join(x.title for x in Todo.query.all())
 
     @app.route("/create", methods=["POST"])
-    def create():
+    async def create():
         db.session.add(Todo("Test one", "test"))
-        if flask.request.form.get("fail"):
+        data = await quart.request.get_json() or {}
+
+        if data.get("fail"):
             raise RuntimeError("Failing as requested")
         return "ok"
 
     return app.test_client()
 
 
-def test_commit_on_success(client):
+async def test_commit_on_success(client):
     with pytest.warns(DeprecationWarning, match="COMMIT_ON_TEARDOWN"):
-        resp = client.post("/create")
+        async with client.app.app_context():
+            resp = await client.post("/create")
 
     assert resp.status_code == 200
-    assert client.get("/").data == b"Test one"
+
+    resp = await client.get("/")
+    assert (await resp.get_data()) == b"Test one"
 
 
-def test_roll_back_on_failure(client):
+@pytest.mark.xfail
+async def test_roll_back_on_failure(client, db, Todo):
     with pytest.warns(DeprecationWarning, match="COMMIT_ON_TEARDOWN"):
-        resp = client.post("/create", data={"fail": "on"})
+        async with client.app.app_context():
+            resp = await client.post("/create", json={"fail": "on"})
 
     assert resp.status_code == 500
-    assert client.get("/").data == b""
+
+    async with client.app.app_context():
+        resp = await client.get("/")
+
+    assert (await resp.get_data()) == b""

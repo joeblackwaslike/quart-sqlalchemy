@@ -3,9 +3,9 @@ from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
-from flask_sqlalchemy import SQLAlchemy
-from flask_sqlalchemy.model import BindMetaMixin
-from flask_sqlalchemy.model import Model
+from quart_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy.model import BindMetaMixin
+from quart_sqlalchemy.model import Model
 
 
 def test_custom_model_class():

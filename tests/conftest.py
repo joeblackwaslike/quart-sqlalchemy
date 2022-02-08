@@ -1,22 +1,23 @@
 from datetime import datetime
 
-import flask
 import pytest
+import quart
 
-from flask_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy import SQLAlchemy
 
 
 @pytest.fixture
 def app(request):
-    app = flask.Flask(request.module.__name__)
-    app.testing = True
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
-    return app
+    app_ = quart.Quart(request.module.__name__)
+    app_.testing = True
+    app_.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
+    # async with app_.test_app():
+    yield app_
 
 
 @pytest.fixture
 def db(app):
-    return SQLAlchemy(app)
+    yield SQLAlchemy(app)
 
 
 @pytest.fixture

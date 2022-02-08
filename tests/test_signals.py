@@ -1,11 +1,11 @@
-import flask
 import pytest
+import quart
 
-from flask_sqlalchemy import before_models_committed
-from flask_sqlalchemy import models_committed
+from quart_sqlalchemy import before_models_committed
+from quart_sqlalchemy import models_committed
 
 pytestmark = pytest.mark.skipif(
-    not flask.signals_available, reason="Signals require the blinker library."
+    not quart.signals_available, reason="Signals require the blinker library."
 )
 
 

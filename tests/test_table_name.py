@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.ext.declarative import declared_attr
 
-from flask_sqlalchemy.model import camel_to_snake_case
+from quart_sqlalchemy.model import camel_to_snake_case
 
 
 @pytest.mark.parametrize(
