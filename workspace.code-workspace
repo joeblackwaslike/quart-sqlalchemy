@@ -5,6 +5,7 @@
 		}
 	],
 	"settings": {
-		"python.terminal.activateEnvInCurrentTerminal": true
+		"python.terminal.activateEnvInCurrentTerminal": true,
+		"esbonio.sphinx.confDir": ""
 	}
 }

@@ -1,133 +1,101 @@
-.. currentmodule:: flask_sqlalchemy
+Modifying and Querying Data
+===========================
 
-Select, Insert, Delete
-======================
 
-Now that you have :ref:`declared models <models>` it's time to query the
-data from the database.  We will be using the model definitions from the
-:ref:`quickstart` chapter.
+Insert, Update, Delete
+----------------------
 
-Inserting Records
+See SQLAlchemy's `ORM tutorial`_ and other SQLAlchemy documentation for more information
+about modifying data with the ORM.
+
+.. _ORM tutorial: https://docs.sqlalchemy.org/tutorial/orm_data_manipulation.html
+
+To insert data, pass the model object to ``db.session.add()``:
+
+.. code-block:: python
+
+    user = User()
+    db.session.add(user)
+    db.session.commit()
+
+To update data, modify attributes on the model objects:
+
+.. code-block:: python
+
+    user.verified = True
+    db.session.commit()
+
+To delete data, pass the model object to ``db.session.delete()``:
+
+.. code-block:: python
+
+    db.session.delete(user)
+    db.session.commit()
+
+After modifying data, you must call ``db.session.commit()`` to commit the changes to
+the database. Otherwise, they will be discarded at the end of the request.
+
+
+Select
+------
+
+See SQLAlchemy's `Querying Guide`_ and other SQLAlchemy documentation for more
+information about querying data with the ORM.
+
+.. _Querying Guide: https://docs.sqlalchemy.org/orm/queryguide.html
+
+Queries are executed through ``db.session.execute()``. They can be constructed
+using :func:`~sqlalchemy.sql.expression.select`. Executing a select returns a
+:class:`~sqlalchemy.engine.Result` object that has many methods for working with the
+returned rows.
+
+.. code-block:: python
+
+    user = db.session.execute(db.select(User).filter_by(username=username)).one()
+
+    users = db.session.execute(db.select(User).order_by(User.username)).scalars()
+
+
+Queries for Views
 -----------------
 
-Before we can query something we will have to insert some data.  All your
-models should have a constructor, so make sure to add one if you forgot.
-Constructors are only used by you, not by SQLAlchemy internally so it's
-entirely up to you how you define them.
+If you write a Flask view function it's often useful to return a ``404 Not Found`` error
+for missing entries. Flask-SQLAlchemy provides some extra query methods.
 
-Inserting data into the database is a three step process:
+-   :meth:`.SQLAlchemy.get_or_404` will raise a 404 if the row with the given id doesn't
+    exist, otherwise it will return the instance.
+-   :meth:`.SQLAlchemy.first_or_404` will raise a 404 if the query does not return any
+    results, otherwise it will return the first result.
+-   :meth:`.SQLAlchemy.one_or_404` will raise a 404 if the query does not return exactly
+    one result, otherwise it will return the result.
 
-1.  Create the Python object
-2.  Add it to the session
-3.  Commit the session
+.. code-block:: python
 
-The session here is not the Flask session, but the Flask-SQLAlchemy one.
-It is essentially a beefed up version of a database transaction.  This is
-how it works:
+    @app.route("/user-by-id/<int:id>")
+    def user_by_id(id):
+        user = db.get_or_404(User, id)
+        return render_template("show_user.html", user=user)
 
->>> from yourapp import User
->>> me = User(username='admin', email='admin@example.com')
->>> db.session.add(me)
->>> db.session.commit()
+    @app.route("/user-by-username/<username>")
+    def user_by_username(username):
+        user = db.one_or_404(db.select(User).filter_by(username=username))
+        return render_template("show_user.html", user=user)
 
-Alright, that was not hard.  What happens at what point?  Before you add
-the object to the session, SQLAlchemy basically does not plan on adding it
-to the transaction.  That is good because you can still discard the
-changes.  For example think about creating the post at a page but you only
-want to pass the post to the template for preview rendering instead of
-storing it in the database.
+You can add a custom message to the 404 error:
 
-The :func:`~sqlalchemy.orm.session.Session.add` function call then adds
-the object.  It will issue an `INSERT` statement for the database but
-because the transaction is still not committed you won't get an ID back
-immediately.  If you do the commit, your user will have an ID:
+    .. code-block:: python
 
->>> me.id
-1
-
-Deleting Records
-----------------
-
-Deleting records is very similar, instead of
-:func:`~sqlalchemy.orm.session.Session.add` use
-:func:`~sqlalchemy.orm.session.Session.delete`:
-
->>> db.session.delete(me)
->>> db.session.commit()
-
-Querying Records
-----------------
-
-So how do we get data back out of our database?  For this purpose
-Flask-SQLAlchemy provides a :attr:`~Model.query` attribute on your
-:class:`Model` class.  When you access it you will get back a new query
-object over all records.  You can then use methods like
-:func:`~sqlalchemy.orm.query.Query.filter` to filter the records before
-you fire the select with :func:`~sqlalchemy.orm.query.Query.all` or
-:func:`~sqlalchemy.orm.query.Query.first`.  If you want to go by
-primary key you can also use :func:`~sqlalchemy.orm.query.Query.get`.
-
-The following queries assume following entries in the database:
-
-=========== =========== =====================
-`id`        `username`  `email`
-1           admin       admin@example.com
-2           peter       peter@example.org
-3           guest       guest@example.com
-=========== =========== =====================
-
-Retrieve a user by username:
-
->>> peter = User.query.filter_by(username='peter').first()
->>> peter.id
-2
->>> peter.email
-'peter@example.org'
-
-Same as above but for a non existing username gives `None`:
-
->>> missing = User.query.filter_by(username='missing').first()
->>> missing is None
-True
-
-Selecting a bunch of users by a more complex expression:
-
->>> User.query.filter(User.email.endswith('@example.com')).all()
-[<User 'admin'>, <User 'guest'>]
-
-Ordering users by something:
-
->>> User.query.order_by(User.username).all()
-[<User 'admin'>, <User 'guest'>, <User 'peter'>]
-
-Limiting users:
-
->>> User.query.limit(1).all()
-[<User 'admin'>]
-
-Getting user by primary key:
-
->>> User.query.get(1)
-<User 'admin'>
+        user = db.one_or_404(
+            db.select(User).filter_by(username=username),
+            description=f"No user named '{username}'."
+        )
 
 
-Queries in Views
-----------------
+Legacy Query Interface
+----------------------
 
-If you write a Flask view function it's often very handy to return a 404
-error for missing entries.  Because this is a very common idiom,
-Flask-SQLAlchemy provides a helper for this exact purpose.  Instead of
-:meth:`~sqlalchemy.orm.query.Query.get` one can use
-:meth:`~Query.get_or_404` and instead of
-:meth:`~sqlalchemy.orm.query.Query.first` :meth:`~Query.first_or_404`.
-This will raise 404 errors instead of returning `None`::
+You may see uses of ``Model.query`` or ``session.query`` to build queries. That query
+interface is considered legacy in SQLAlchemy. Prefer using the
+``session.execute(select(...))`` instead.
 
-    @app.route('/user/<username>')
-    def show_user(username):
-        user = User.query.filter_by(username=username).first_or_404()
-        return render_template('show_user.html', user=user)
-
-
-Also, if you want to add a description with abort(), you can use it as argument as well.
-
->>> User.query.filter_by(username=username).first_or_404(description=f"There is no data with {username}")
+See :doc:`legacy-query` for documentation.

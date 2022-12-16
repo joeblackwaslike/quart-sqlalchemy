@@ -8,11 +8,11 @@ from threading import Lock
 from time import perf_counter
 
 import sqlalchemy
-from flask import _app_ctx_stack
-from flask import abort
-from flask import current_app
-from flask import request
-from flask.signals import Namespace
+from quart import _app_ctx_stack
+from quart import abort
+from quart import current_app
+from quart import request
+from quart.signals import Namespace
 from sqlalchemy import event
 from sqlalchemy import inspect
 from sqlalchemy import orm
@@ -38,7 +38,7 @@ try:
 except ImportError:
     from threading import get_ident as _ident_func
 
-__version__ = "3.0.0.dev0"
+__version__ = "0.1.0"
 
 _signals = Namespace()
 models_committed = _signals.signal("models-committed")
@@ -139,7 +139,7 @@ def _calling_context(app_path):
 
 
 class SignallingSession(SessionBase):
-    """The signalling session is the default session that Flask-SQLAlchemy
+    """The signalling session is the default session that Quart-SQLAlchemy
     uses.  It extends the default session system with bind selection and
     modification tracking.
 
@@ -306,7 +306,7 @@ class _EngineDebuggingSignalEvents:
 
 
 def get_debug_queries():
-    """In debug mode or testing mode, Flask-SQLAlchemy will log all the SQL
+    """In debug mode or testing mode, Quart-SQLAlchemy will log all the SQL
     queries sent to the database. This information is available until the end
     of request which makes it possible to easily ensure that the SQL generated
     is the one expected on errors or in unittesting. Alternatively, you can also
@@ -646,14 +646,14 @@ class _SQLAlchemyState:
 
 class SQLAlchemy:
     """This class is used to control the SQLAlchemy integration to one
-    or more Flask applications.  Depending on how you initialize the
+    or more Quart applications.  Depending on how you initialize the
     object it is usable right away or will attach as needed to a
-    Flask application.
+    Quart application.
 
     There are two usage modes which work very similarly.  One is binding
-    the instance to a very specific Flask application::
+    the instance to a very specific Quart application::
 
-        app = Flask(__name__)
+        app = Quart(__name__)
         db = SQLAlchemy(app)
 
     The second possibility is to create the object once and configure the
@@ -662,15 +662,15 @@ class SQLAlchemy:
         db = SQLAlchemy()
 
         def create_app():
-            app = Flask(__name__)
+            app = Quart(__name__)
             db.init_app(app)
             return app
 
     The difference between the two is that in the first case methods like
     :meth:`create_all` and :meth:`drop_all` will work all the time but in
-    the second case a :meth:`flask.Flask.app_context` has to exist.
+    the second case a :meth:`quart.Quart.app_context` has to exist.
 
-    By default Flask-SQLAlchemy will apply some backend-specific settings
+    By default Quart-SQLAlchemy will apply some backend-specific settings
     to improve your experience with them.
 
     This class also provides access to all the SQLAlchemy functions and classes
@@ -682,7 +682,7 @@ class SQLAlchemy:
             pw_hash = db.Column(db.String(80))
 
     You can still use :mod:`sqlalchemy` and :mod:`sqlalchemy.orm` directly, but
-    note that Flask-SQLAlchemy customizations are available only through an
+    note that Quart-SQLAlchemy customizations are available only through an
     instance of this :class:`SQLAlchemy` class.  Query classes default to
     :class:`BaseQuery` for `db.Query`, `db.Model.query_class`, and the default
     query_class for `db.relationship` and `db.backref`.  If you use these
@@ -778,7 +778,7 @@ class SQLAlchemy:
         on the factory from :meth:`create_session`.
 
         An extra key ``'scopefunc'`` can be set on the ``options`` dict to
-        specify a custom scope function.  If it's not provided, Flask's app
+        specify a custom scope function.  If it's not provided, Quart's app
         context stack identity is used. This will ensure that sessions are
         created and removed with the request/response cycle, and should be fine
         in most cases.
@@ -992,16 +992,17 @@ class SQLAlchemy:
         if reference_app is not None:
             return reference_app
 
-        if current_app:
-            return current_app._get_current_object()
-
         if self.app is not None:
             return self.app
+
+        if current_app:
+            # return current_app._get_current_object()
+            return current_app._get_current_object()
 
         raise RuntimeError(
             "No application found. Either work inside a view function or push"
             " an application context. See"
-            " https://flask-sqlalchemy.palletsprojects.com/contexts/."
+            " https://quart-sqlalchemy.palletsprojects.com/contexts/."
         )
 
     def get_tables_for_bind(self, bind=None):

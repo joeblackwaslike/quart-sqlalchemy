@@ -1,41 +1,47 @@
-from datetime import datetime
+from __future__ import annotations
+
+import typing as t
+from pathlib import Path
 
 import pytest
-import quart
+
+import sqlalchemy as sa
+from quart import  Quart
+from quart.ctx import AppContext
+
 
 from quart_sqlalchemy import SQLAlchemy
 
 
 @pytest.fixture
-def app(request):
-    app_ = quart.Quart(request.module.__name__)
-    app_.testing = True
-    app_.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
-    # async with app_.test_app():
-    yield app_
+def app(request, tmp_path):
+    app = Quart(request.module.__name__, instance_path=str(tmp_path / "instance"))
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite://"
+    app.config["SQLALCHEMY_RECORD_QUERIES"] = False
+    return app
 
 
 @pytest.fixture
-def db(app):
-    yield SQLAlchemy(app)
+async def app_ctx(app: Quart) -> t.Generator[AppContext, None, None]:
+    async with app.app_context() as ctx:
+        yield ctx
 
 
 @pytest.fixture
-def Todo(db):
+def db(app: Quart) -> SQLAlchemy:
+    return SQLAlchemy(app)
+
+
+@pytest.fixture
+async def Todo(app: Quart, db: SQLAlchemy) -> t.Any:
     class Todo(db.Model):
-        __tablename__ = "todos"
-        id = db.Column("todo_id", db.Integer, primary_key=True)
-        title = db.Column(db.String(60))
-        text = db.Column(db.String)
-        done = db.Column(db.Boolean)
-        pub_date = db.Column(db.DateTime)
+        id = sa.Column(sa.Integer, primary_key=True)
+        title = sa.Column(sa.String)
 
-        def __init__(self, title, text):
-            self.title = title
-            self.text = text
-            self.done = False
-            self.pub_date = datetime.utcnow()
+    async with app.app_context():
+        db.create_all()
 
-    db.create_all()
     yield Todo
-    db.drop_all()
+
+    async with app.app_context():
+        db.drop_all()

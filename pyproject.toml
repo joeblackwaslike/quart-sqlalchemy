@@ -1,60 +1,91 @@
-[tool.poetry]
-name = "Quart-SQLAlchemy"
+[project]
+name = "quart-sqlalchemy"
 version = "0.1.0"
-description = "A Quart extension for SQLAlchemy"
-authors = ["Joe Black <me@joeblack.nyc>"]
-license = "BSD-3-Clause"
-readme = "README.rst"
-repository = "https://github.com/joeblackwaslike/quart_sqlalchemy/"
-classifiers = [
-    "Development Status :: 5 - Production/Stable",
-    "Environment :: Web Environment",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: BSD License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+description = ""
+authors = [
+    {name = "Joe Black", email = "me@joeblack.nyc"},
 ]
-
-[tool.poetry.dependencies]
-python = "^3.7"
-quart = "^0.16.3"
-SQLAlchemy = "^1.4"
-Werkzeug = "^2.0.3"
-
-[tool.poetry.dev-dependencies]
-pytest = "^7.0.0"
-pylint = "^2.12.2"
-flake8 = "^4.0.1"
-mypy = "^0.931"
-pytest-asyncio = "^0.18.0"
-tox = "^3.24.5"
-pycodestyle = "^2.8.0"
-black = "^22.1.0"
-isort = "^5.10.1"
-ipython = "^7.31"
-mock = "^4.0.3"
-pre-commit = "^2.17.0"
+dependencies = [
+    "quart>=0.18.3",
+    "SQLAlchemy==1.4.35",
+]
+requires-python = ">=3.7"
+readme = "README.rst"
+license = {text = "MIT"}
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["pdm-pep517>=1.0"]
+build-backend = "pdm.pep517.api"
 
-[tool.isort]
-combine_as_imports = true
-force_grid_wrap = 0
-include_trailing_comma = true
-known_first_party = "quart_sqlalchemy, tests"
-line_length = 88
-multi_line_output = 3
-no_lines_before = "LOCALFOLDER"
-order_by_type = false
-reverse_relative = true
+[tool.pdm]
+version = { source = "file", path = "src/flask_sqlalchemy/__init__.py" }
 
-[tool.black]
-line_length = 88
-target_version = ["py37"]
+[tool.pdm.dev-dependencies]
+tests = [
+    "pytest",
+    "blinker",
+]
+coverage = [
+    "pytest-cov",
+    "coverage[toml]",
+]
+mypy = [
+    "mypy",
+    "pytest",
+    "sqlalchemy[mypy]",
+]
+docs = [
+    "sphinx",
+    "pallets-sphinx-themes",
+    "sphinx-issues",
+    "sphinxcontrib-log-cabinet",
+]
+pre-commit = [
+    "pre-commit",
+]
+tox = [
+    "tox",
+    "tox-pdm",
+]
+
+[tool.pdm.build]
+source-includes = [
+    "docs/",
+    "examples/",
+    "tests/",
+    "CHANGES.rst",
+    "pdm.lock",
+    "tox.ini",
+]
+excludes = [
+    "docs/_build",
+]
 
 [tool.pytest.ini_options]
-addopts = "--showlocals --asyncio-mode=auto"
 testpaths = ["tests"]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["flask_sqlalchemy", "tests"]
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.mypy]
+python_version = "3.7"
+files = ["src/flask_sqlalchemy", "tests"]
+show_error_codes = true
+pretty = true
+strict = true
+# db.Model attribute doesn't recognize subclassing
+disable_error_code = ["name-defined"]
+# db.Model is Any
+disallow_subclassing_any = false
+
+[[tool.mypy.overrides]]
+module = [
+    "cryptography.*",
+    "importlib_metadata.*",
+]
+ignore_missing_imports = true
