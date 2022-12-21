@@ -1,4 +1,4 @@
-from flaskr import create_app
+from quartr import create_app
 
 
 def test_config():
@@ -21,7 +21,7 @@ def test_init_db_command(runner, monkeypatch):
         nonlocal called
         called = True
 
-    monkeypatch.setattr("flaskr.init_db", fake_init_db)
+    monkeypatch.setattr("quartr.init_db", fake_init_db)
     result = runner.invoke(args=["init-db"])
     assert "Initialized" in result.output
     assert called

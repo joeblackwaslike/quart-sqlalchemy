@@ -2,28 +2,28 @@ from __future__ import annotations
 
 import pytest
 import sqlalchemy as sa
-from flask import Flask
+from quart import Quart
 
-from flask_sqlalchemy import SQLAlchemy
-from flask_sqlalchemy.session import Session
+from quart_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy.session import Session
 
 
-def test_scope(app: Flask, db: SQLAlchemy) -> None:
+async def test_scope(app: Quart, db: SQLAlchemy) -> None:
     with pytest.raises(RuntimeError):
         db.session()
 
-    with app.app_context():
+    async with app.app_context():
         first = db.session()
         second = db.session()
         assert first is second
         assert isinstance(first, Session)
 
-    with app.app_context():
+    async with app.app_context():
         third = db.session()
         assert first is not third
 
 
-def test_custom_scope(app: Flask) -> None:
+async def test_custom_scope(app: Quart) -> None:
     count = 0
 
     def scope() -> int:
@@ -33,7 +33,7 @@ def test_custom_scope(app: Flask) -> None:
 
     db = SQLAlchemy(app, session_options={"scopefunc": scope})
 
-    with app.app_context():
+    async with app.app_context():
         first = db.session()
         second = db.session()
         assert first is not second  # a new scope is generated on each call
@@ -41,26 +41,26 @@ def test_custom_scope(app: Flask) -> None:
         second.close()
 
 
-@pytest.mark.usefixtures("app_ctx")
-def test_session_class(app: Flask) -> None:
+async def test_session_class(app: Quart) -> None:
     class CustomSession(Session):
         pass
+    
+    async with app.app_context():
+        db = SQLAlchemy(app, session_options={"class_": CustomSession})
+        assert isinstance(db.session(), CustomSession)
 
-    db = SQLAlchemy(app, session_options={"class_": CustomSession})
-    assert isinstance(db.session(), CustomSession)
 
+async def test_session_uses_bind_key(app: Quart) -> None:
+    async with app.app_context():
+        app.config["SQLALCHEMY_BINDS"] = {"a": "sqlite://"}
+        db = SQLAlchemy(app)
 
-@pytest.mark.usefixtures("app_ctx")
-def test_session_uses_bind_key(app: Flask) -> None:
-    app.config["SQLALCHEMY_BINDS"] = {"a": "sqlite://"}
-    db = SQLAlchemy(app)
+        class User(db.Model):
+            id = sa.Column(sa.Integer, primary_key=True)
 
-    class User(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        class Post(db.Model):
+            __bind_key__ = "a"
+            id = sa.Column(sa.Integer, primary_key=True)
 
-    class Post(db.Model):
-        __bind_key__ = "a"
-        id = sa.Column(sa.Integer, primary_key=True)
-
-    assert db.session.get_bind(mapper=User) is db.engine
-    assert db.session.get_bind(mapper=Post) is db.engines["a"]
+        assert db.session.get_bind(mapper=User) is db.engine
+        assert db.session.get_bind(mapper=Post) is db.engines["a"]

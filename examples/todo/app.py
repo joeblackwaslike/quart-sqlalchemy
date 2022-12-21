@@ -1,18 +1,20 @@
 from datetime import datetime
 from datetime import timezone
+import asyncio
 
-from flask import flash
-from flask import Flask
-from flask import redirect
-from flask import render_template
-from flask import request
-from flask import url_for
-from flask_sqlalchemy import SQLAlchemy
+from quart import flash
+from quart import Quart
+from quart import redirect
+from quart import render_template
+from quart import request
+from quart import url_for
+from quart_sqlalchemy import SQLAlchemy
 
-app = Flask(__name__)
+app = Quart(__name__)
 app.secret_key = "Achee6phIexoh8dagiQuew0ephuga4Ih"
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///todo.sqlite"
-db = SQLAlchemy(app)
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app, engine_options=dict(check_same_thread=False))
 
 
 def now_utc():
@@ -27,39 +29,49 @@ class Todo(db.Model):
     pub_date = db.Column(db.DateTime, nullable=False, default=now_utc)
 
 
-with app.app_context():
-    db.create_all()
-
-
 @app.route("/")
-def show_all():
+async def show_all():
     select = db.select(Todo).order_by(Todo.pub_date.desc())
-    todos = db.session.execute(select).scalars()
-    return render_template("show_all.html", todos=todos)
+    todos = db.session.execute(select).all()
+    # import pdb; pdb.set_trace()
+    return dict(status='ok', todos=len(todos))
+    # return await render_template("show_all.html", todos=todos)
 
 
 @app.route("/new", methods=["GET", "POST"])
-def new():
+async def new():
     if request.method == "POST":
-        if not request.form["title"]:
-            flash("Title is required", "error")
-        elif not request.form["text"]:
-            flash("Text is required", "error")
+        form = await request.form
+        if not form["title"]:
+            await flash("Title is required", "error")
+        elif not form["text"]:
+            await flash("Text is required", "error")
         else:
-            todo = Todo(title=request.form["title"], text=request.form["text"])
+            todo = Todo(title=form["title"], text=form["text"])
             db.session.add(todo)
             db.session.commit()
-            flash("Todo item was successfully created")
+            await flash("Todo item was successfully created")
             return redirect(url_for("show_all"))
 
-    return render_template("new.html")
+    return await render_template("new.html")
 
 
 @app.route("/update", methods=["POST"])
-def update_done():
-    for todo in db.session.execute(db.select(Todo)).scalars():
-        todo.done = f"done.{todo.id}" in request.form
+async def update_done():
+    form = await request.form
 
-    flash("Updated status")
+    for todo in db.session.execute(db.select(Todo)).scalars():
+        todo.done = f"done.{todo.id}" in form
+
+    await flash("Updated status")
     db.session.commit()
     return redirect(url_for("show_all"))
+
+
+async def setup_db():
+    async with app.app_context():
+        db.create_all()
+
+
+if __name__ == "__main__":
+    asyncio.run(setup_db())

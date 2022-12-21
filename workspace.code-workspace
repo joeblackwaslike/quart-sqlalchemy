@@ -6,6 +6,14 @@
 	],
 	"settings": {
 		"python.terminal.activateEnvInCurrentTerminal": true,
-		"esbonio.sphinx.confDir": ""
+		"esbonio.sphinx.confDir": "",
+		"python.formatting.blackPath": "~/.local/bin/black",
+		"python.formatting.provider": "black",
+		"[python]": {
+			"editor.formatOnSave": true,
+			"editor.codeActionsOnSave": {
+				"source.organizeImports": true
+			}
+		}
 	}
 }

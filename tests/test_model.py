@@ -5,11 +5,11 @@ import typing as t
 import pytest
 import sqlalchemy as sa
 import sqlalchemy.orm
-from flask import Flask
+from quart import Quart
 
-from flask_sqlalchemy import SQLAlchemy
-from flask_sqlalchemy.model import DefaultMeta
-from flask_sqlalchemy.model import Model
+from quart_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy.model import DefaultMeta
+from quart_sqlalchemy.model import Model
 
 
 def test_default_model_class(db: SQLAlchemy) -> None:
@@ -19,7 +19,7 @@ def test_default_model_class(db: SQLAlchemy) -> None:
     assert isinstance(db.Model, DefaultMeta)
 
 
-def test_custom_model_class(app: Flask) -> None:
+def test_custom_model_class(app: Quart) -> None:
     class CustomModel(Model):
         pass
 
@@ -28,28 +28,28 @@ def test_custom_model_class(app: Flask) -> None:
     assert isinstance(db.Model, DefaultMeta)
 
 
-@pytest.mark.usefixtures("app_ctx")
 @pytest.mark.parametrize("base", [Model, object])
-def test_custom_declarative_class(app: Flask, base: t.Any) -> None:
+async def test_custom_declarative_class(app: Quart, base: t.Any) -> None:
     class CustomMeta(DefaultMeta):
         pass
 
-    CustomModel = sa.orm.declarative_base(cls=base, name="Model", metaclass=CustomMeta)
-    db = SQLAlchemy(app, model_class=CustomModel)
-    assert db.Model is CustomModel
-    assert db.Model.query_class is db.Query
-    assert "query" in db.Model.__dict__
+    async with app.app_context():
+        CustomModel = sa.orm.declarative_base(cls=base, name="Model", metaclass=CustomMeta)
+        db = SQLAlchemy(app, model_class=CustomModel)
+        assert db.Model is CustomModel
+        assert db.Model.query_class is db.Query
+        assert "query" in db.Model.__dict__
 
 
-@pytest.mark.usefixtures("app_ctx")
-def test_model_repr(db: SQLAlchemy) -> None:
+async def test_model_repr(app: Quart, db: SQLAlchemy) -> None:
     class User(db.Model):
         id = sa.Column(sa.Integer, primary_key=True)
 
-    db.create_all()
-    user = User()
-    assert repr(user) == f"<User (transient {id(user)})>"
-    db.session.add(user)
-    assert repr(user) == f"<User (pending {id(user)})>"
-    db.session.flush()
-    assert repr(user) == f"<User {user.id}>"
+    async with app.app_context():
+        db.create_all()
+        user = User()
+        assert repr(user) == f"<User (transient {id(user)})>"
+        db.session.add(user)
+        assert repr(user) == f"<User (pending {id(user)})>"
+        db.session.flush()
+        assert repr(user) == f"<User {user.id}>"

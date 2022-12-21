@@ -1,10 +1,10 @@
 from datetime import datetime
 from datetime import timezone
 
-from flask import url_for
+from quart import url_for
 
-from flaskr import db
-from flaskr.auth.models import User
+from quartr import db
+from quartr.auth.models import User
 
 
 def now_utc():

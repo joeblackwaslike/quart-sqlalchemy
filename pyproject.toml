@@ -1,13 +1,13 @@
 [project]
 name = "quart-sqlalchemy"
-version = "0.1.0"
+version = "2.0.0"
 description = ""
 authors = [
     {name = "Joe Black", email = "me@joeblack.nyc"},
 ]
 dependencies = [
     "quart>=0.18.3",
-    "SQLAlchemy==1.4.35",
+    "SQLAlchemy>=1.4.35",
 ]
 requires-python = ">=3.7"
 readme = "README.rst"
@@ -18,7 +18,7 @@ requires = ["pdm-pep517>=1.0"]
 build-backend = "pdm.pep517.api"
 
 [tool.pdm]
-version = { source = "file", path = "src/flask_sqlalchemy/__init__.py" }
+version = { source = "file", path = "src/quart_sqlalchemy/__init__.py" }
 
 [tool.pdm.dev-dependencies]
 tests = [
@@ -47,6 +47,9 @@ tox = [
     "tox",
     "tox-pdm",
 ]
+dev = [
+    "pytest-asyncio>=0.20.3",
+]
 
 [tool.pdm.build]
 source-includes = [
@@ -64,17 +67,29 @@ excludes = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["error"]
+asyncio_mode = "auto"
 
 [tool.coverage.run]
 branch = true
-source = ["flask_sqlalchemy", "tests"]
+source = ["src", "tests"]
 
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]
 
+[tool.isort]
+profile = "black"
+src_paths = ["src", "tests", "examples"]
+force_single_line = true
+use_parentheses = true
+atomic = true
+lines_after_imports = 2
+line_length = 100
+order_by_type = false
+known_first_party = ["quart_sqlalchemy", "tests"]
+
 [tool.mypy]
 python_version = "3.7"
-files = ["src/flask_sqlalchemy", "tests"]
+files = ["src/quart_sqlalchemy", "tests"]
 show_error_codes = true
 pretty = true
 strict = true

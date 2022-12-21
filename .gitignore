@@ -17,3 +17,5 @@ env/
 venv/
 .venv/
 .pdm.toml
+pytest-plugin-work
+old

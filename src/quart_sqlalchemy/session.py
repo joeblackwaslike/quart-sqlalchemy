@@ -3,9 +3,8 @@ from __future__ import annotations
 import typing as t
 
 import sqlalchemy as sa
-import sqlalchemy.exc
-import sqlalchemy.orm
 from quart.globals import app_ctx
+
 
 if t.TYPE_CHECKING:
     from .extension import SQLAlchemy

@@ -6,6 +6,9 @@ Quart-SQLAlchemy is an extension for `Quart`_ that adds support for
 with Quart by providing useful defaults and extra helpers that make it
 easier to accomplish common tasks.
 
+This work is based on the excellent Flask extension [FlaskSQLAlchemy](https://github.com/pallets-eco/flask-sqlalchemy/tree/main/examples)
+and is essentialy a port of that to Quart.
+
 
 Installing
 ----------
@@ -31,7 +34,7 @@ A Simple Example
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///example.sqlite"
     db = SQLAlchemy(app)
 
-    class User(db.Model):
+    class User(db.Model)
         id = db.Column(db.Integer, primary_key=True)
         username = db.Column(db.String, unique=True, nullable=False)
 
@@ -48,9 +51,9 @@ Contributing
 ------------
 
 For guidance on setting up a development environment and how to make a
-contribution to Flask-SQLAlchemy, see the `contributing guidelines`_.
+contribution to Quart-SQLAlchemy, see the `contributing guidelines`_.
 
-.. _contributing guidelines: https://github.com/pallets-eco/flask-sqlalchemy/blob/main/CONTRIBUTING.rst
+.. _contributing guidelines: https://github.com/joeblackwaslike/quart-sqlalchemy/blob/main/CONTRIBUTING.rst
 
 
 Donate
@@ -67,11 +70,11 @@ projects, `please donate today`_.
 Links
 -----
 
--   Documentation: https://flask-sqlalchemy.palletsprojects.com/
--   Changes: https://flask-sqlalchemy.palletsprojects.com/changes/
--   PyPI Releases: https://pypi.org/project/Flask-SQLAlchemy/
--   Source Code: https://github.com/pallets-eco/flask-sqlalchemy/
--   Issue Tracker: https://github.com/pallets-eco/flask-sqlalchemy/issues/
--   Website: https://palletsprojects.com/
--   Twitter: https://twitter.com/PalletsTeam
--   Chat: https://discord.gg/pallets
+-   Documentation: 
+-   Changes: 
+-   PyPI Releases: https://pypi.org/project/
+-   Source Code: https://github.com/joeblackwaslike/quart-sqlalchemy/
+-   Issue Tracker: https://github.com/joeblackwaslike/quart-sqlalchemy/issues/
+-   Website: 
+-   Twitter: 
+-   Chat: 

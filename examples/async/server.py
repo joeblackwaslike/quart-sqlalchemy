@@ -1,10 +1,11 @@
 import asyncio
 
 from quart import Quart
-from quart_sqlalchemy import SQLAlchemy
-from sqlalchemy.sql import func
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import func
+
+from quart_sqlalchemy import SQLAlchemy
 
 
 def create_app():
@@ -35,7 +36,9 @@ class B(db.Model):
 
 
 async def async_main():
-    import pdb; pdb.set_trace()
+    import pdb
+
+    pdb.set_trace()
     async with app.app_context():
         async with db.engine.begin() as conn:
             await conn.run_sync(db.metadata.drop_all)
@@ -44,9 +47,7 @@ async def async_main():
         # async with db.engine.begin() as conn:
         async with db.session() as session:
             async with session.begin():
-                session.add(
-                    A(bs=[B(), B()], data="a1")
-                )
+                session.add(A(bs=[B(), B()], data="a1"))
                 # session.add_all(
                 #     [
                 #         A(bs=[B(), B()], data="a1"),
@@ -56,7 +57,7 @@ async def async_main():
                 # )
                 await session.commit()
                 # await session.commit()
-    
+
     # async with app.app_context():
     #         stmt = select(A).options(selectinload(A.bs))
 
@@ -72,4 +73,3 @@ async def async_main():
 
 
 asyncio.run(async_main())
-

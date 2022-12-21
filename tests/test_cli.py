@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import typing as t
+from typing import Any
 
-import pytest
+from quart import Quart
 
-from flask_sqlalchemy import SQLAlchemy
-from flask_sqlalchemy.cli import add_models_to_shell
+from quart_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy.cli import add_models_to_shell
 
 
-@pytest.mark.usefixtures("app_ctx")
-def test_shell_context(db: SQLAlchemy, Todo: t.Any) -> None:
-    context = add_models_to_shell()
-    assert context["db"] is db
-    assert context["Todo"] is Todo
+async def test_shell_context(app: Quart, db: SQLAlchemy, Todo: Any) -> None:
+    async with app.app_context():
+        context = add_models_to_shell()
+        assert context["db"] is db
+        assert context["Todo"] is Todo

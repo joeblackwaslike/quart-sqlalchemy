@@ -1,8 +1,8 @@
 import pytest
 
-from flaskr import db
-from flaskr.auth.models import User
-from flaskr.blog.models import Post
+from quartr import db
+from quartr.auth.models import User
+from quartr.blog.models import Post
 
 
 def test_index(client, auth):

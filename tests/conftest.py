@@ -1,20 +1,26 @@
 from __future__ import annotations
 
+import asyncio
 import typing as t
 from pathlib import Path
 
 import pytest
-
 import sqlalchemy as sa
-from quart import  Quart
-from quart.ctx import AppContext
-
+from quart import Quart
 
 from quart_sqlalchemy import SQLAlchemy
 
 
+@pytest.fixture(scope="module")
+def event_loop():
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
+    yield loop
+    loop.close()
+
+
 @pytest.fixture
-def app(request, tmp_path):
+def app(request: pytest.FixtureRequest, tmp_path: Path) -> Quart:
     app = Quart(request.module.__name__, instance_path=str(tmp_path / "instance"))
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite://"
     app.config["SQLALCHEMY_RECORD_QUERIES"] = False
@@ -22,14 +28,8 @@ def app(request, tmp_path):
 
 
 @pytest.fixture
-async def app_ctx(app: Quart) -> t.Generator[AppContext, None, None]:
-    async with app.app_context() as ctx:
-        yield ctx
-
-
-@pytest.fixture
-def db(app: Quart) -> SQLAlchemy:
-    return SQLAlchemy(app)
+async def db(app: Quart) -> SQLAlchemy:
+    yield SQLAlchemy(app)
 
 
 @pytest.fixture

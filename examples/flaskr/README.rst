@@ -1,10 +1,10 @@
-Flaskr
+Quartr
 ======
 
-The basic blog app built in the Flask `tutorial`_, modified to use
-Flask-SQLAlchemy instead of plain SQL.
+The basic blog app built in the Quart `tutorial`_, modified to use
+Quart-SQLAlchemy instead of plain SQL.
 
-.. _tutorial: https://flask.palletsprojects.com/tutorial/
+.. _tutorial: https://quart.palletsprojects.com/tutorial/
 
 
 Install
@@ -17,8 +17,8 @@ default Git version is the master branch.
 .. code-block:: text
 
     # clone the repository
-    $ git clone https://github.com/pallets/flask-sqlalchemy
-    $ cd flask-sqlalchemy/examples/flaskr
+    $ git clone https://github.com/pallets/quart-sqlalchemy
+    $ cd quart-sqlalchemy/examples/quartr
     # checkout the correct version
     $ git checkout correct-version-tag
 
@@ -36,14 +36,14 @@ Or on Windows cmd:
     $ py -3 -m venv venv
     $ venv\Scripts\activate.bat
 
-Install Flaskr:
+Install Quartr:
 
 .. code-block:: text
 
     $ pip install -e .
 
-Or if you are using the master branch, install Flask-SQLAlchemy from
-source before installing Flaskr:
+Or if you are using the master branch, install Quart-SQLAlchemy from
+source before installing Quartr:
 
 .. code-block:: text
 
@@ -56,19 +56,19 @@ Run
 
 .. code-block:: text
 
-    $ export FLASK_APP=flaskr
+    $ export FLASK_APP=quartr
     $ export FLASK_ENV=development
-    $ flask init-db
-    $ flask run
+    $ quart init-db
+    $ quart run
 
 Or on Windows cmd:
 
 .. code-block:: text
 
-    > set FLASK_APP=flaskr
+    > set FLASK_APP=quartr
     > set FLASK_ENV=development
-    > flask init-db
-    > flask run
+    > quart init-db
+    > quart run
 
 Open http://127.0.0.1:5000 in a browser.
 

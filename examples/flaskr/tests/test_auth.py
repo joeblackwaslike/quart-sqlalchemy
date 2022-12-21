@@ -1,9 +1,9 @@
 import pytest
-from flask import g
-from flask import session
+from quart import g
+from quart import session
 
-from flaskr import db
-from flaskr.auth.models import User
+from quartr import db
+from quartr.auth.models import User
 
 
 def test_register(client, app):

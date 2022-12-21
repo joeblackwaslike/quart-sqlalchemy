@@ -1,22 +1,19 @@
 from __future__ import annotations
 
 import typing as t
+from typing import Optional
 
 import pytest
-from flask import Flask
+from quart import Quart
 from werkzeug.exceptions import NotFound
 
-<<<<<<< HEAD
-from quart_sqlalchemy import Pagination
-=======
-from flask_sqlalchemy import SQLAlchemy
-from flask_sqlalchemy.pagination import Pagination
->>>>>>> 6605f9a908d589f7b89c29ac7e84f243de146f29
+from quart_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy.pagination import Pagination
 
 
 class RangePagination(Pagination):
     def __init__(
-        self, total: int | None = 150, page: int = 1, per_page: int = 10
+        self, total: Optional[int] = 150, page: int = 1, per_page: int = 10
     ) -> None:
         if total is None:
             self._data = range(150)
@@ -111,44 +108,6 @@ def test_iter_pages(page: int, expect: list[int | None]) -> None:
     assert list(p.iter_pages()) == expect
 
 
-<<<<<<< HEAD
-async def test_query_paginate(app, db, Todo):
-    async with app.app_context():
-        db.session.add_all([Todo("", "") for _ in range(100)])
-        db.session.commit()
-
-    @app.route("/")
-    async def index():
-        p = Todo.query.paginate()
-        return f"{len(p.items)} items retrieved"
-
-    c = app.test_client()
-    # request default
-    r = await c.get("/")
-    assert r.status_code == 200
-    # request args
-    r = await c.get("/?per_page=10")
-    assert (await r.get_data()).decode("utf8") == "10 items retrieved"
-
-    async with app.app_context():
-        # query default
-        p = Todo.query.paginate()
-        assert p.total == 100
-
-
-async def test_query_paginate_more_than_20(app, db, Todo):
-    async with app.app_context():
-        db.session.add_all(Todo("", "") for _ in range(20))
-        db.session.commit()
-
-    assert len(Todo.query.paginate(max_per_page=10).items) == 10
-
-
-async def test_paginate_min(app, db, Todo):
-    async with app.app_context():
-        db.session.add_all(Todo(str(x), "") for x in range(20))
-        db.session.commit()
-=======
 def test_iter_0_pages() -> None:
     p = RangePagination(total=0)
     assert list(p.iter_pages()) == []
@@ -161,21 +120,21 @@ def test_iter_pages_short(page: int) -> None:
 
 
 class _PaginateCallable:
-    def __init__(self, app: Flask, db: SQLAlchemy, Todo: t.Any) -> None:
+    def __init__(self, app: Quart, db: SQLAlchemy, Todo: t.Any) -> None:
         self.app = app
         self.db = db
         self.Todo = Todo
 
-    def __call__(
+    async def __call__(
         self,
-        page: int | None = None,
-        per_page: int | None = None,
-        max_per_page: int | None = None,
+        page: Optional[int] = 1,
+        per_page: Optional[int] = 20,
+        max_per_page: Optional[int] = None,
         error_out: bool = True,
         count: bool = True,
     ) -> Pagination:
         qs = {"page": page, "per_page": per_page}
-        with self.app.test_request_context(query_string=qs):
+        async with self.app.test_request_context("/", query_string=qs):
             return self.db.paginate(
                 self.db.select(self.Todo),
                 max_per_page=max_per_page,
@@ -185,8 +144,8 @@ class _PaginateCallable:
 
 
 @pytest.fixture
-def paginate(app: Flask, db: SQLAlchemy, Todo: t.Any) -> _PaginateCallable:
-    with app.app_context():
+async def paginate(app: Quart, db: SQLAlchemy, Todo: t.Any) -> _PaginateCallable:
+    async with app.app_context():
         for i in range(1, 101):
             db.session.add(Todo(title=f"task {i}"))
 
@@ -195,8 +154,8 @@ def paginate(app: Flask, db: SQLAlchemy, Todo: t.Any) -> _PaginateCallable:
     return _PaginateCallable(app, db, Todo)
 
 
-def test_paginate(paginate: _PaginateCallable) -> None:
-    p = paginate()
+async def test_paginate(paginate: _PaginateCallable) -> None:
+    p = await paginate()
     assert p.page == 1
     assert p.per_page == 20
     assert len(p.items) == 20
@@ -204,50 +163,34 @@ def test_paginate(paginate: _PaginateCallable) -> None:
     assert p.pages == 5
 
 
-def test_paginate_qs(paginate: _PaginateCallable) -> None:
-    p = paginate(page=2, per_page=10)
+async def test_paginate_qs(paginate: _PaginateCallable) -> None:
+    p = await paginate(page=2, per_page=10)
     assert p.page == 2
     assert p.per_page == 10
->>>>>>> 6605f9a908d589f7b89c29ac7e84f243de146f29
 
 
-def test_paginate_max(paginate: _PaginateCallable) -> None:
-    p = paginate(per_page=100, max_per_page=50)
+async def test_paginate_max(paginate: _PaginateCallable) -> None:
+    p = await paginate(per_page=100, max_per_page=50)
     assert p.per_page == 50
 
 
-def test_no_count(paginate: _PaginateCallable) -> None:
-    p = paginate(count=False)
+async def test_no_count(paginate: _PaginateCallable) -> None:
+    p = await paginate(count=False)
     assert p.total is None
 
 
 @pytest.mark.parametrize(
     ("page", "per_page"), [("abc", None), (None, "abc"), (0, None), (None, -1)]
 )
-def test_error_out(paginate: _PaginateCallable, page: t.Any, per_page: t.Any) -> None:
+async def test_error_out(paginate: _PaginateCallable, page: t.Any, per_page: t.Any) -> None:
     with pytest.raises(NotFound):
-        paginate(page=page, per_page=per_page)
+        await paginate(page=page, per_page=per_page)
 
 
-@pytest.mark.usefixtures("app_ctx")
-def test_no_items_404(db: SQLAlchemy, Todo: t.Any) -> None:
-    p = db.paginate(db.select(Todo))
-    assert len(p.items) == 0
-
-    with pytest.raises(NotFound):
-<<<<<<< HEAD
-        Todo.query.paginate(page=0)
-
-    with pytest.raises(NotFound):
-        Todo.query.paginate(per_page=-1)
-
-
-async def test_paginate_without_count(app, db, Todo):
+async def test_no_items_404(app: Quart, db: SQLAlchemy, Todo: t.Any) -> None:
     async with app.app_context():
-        db.session.add_all(Todo("", "") for _ in range(20))
-        db.session.commit()
+        p = db.paginate(db.select(Todo))
+        assert len(p.items) == 0
 
-    assert len(Todo.query.paginate(count=False, page=1, per_page=10).items) == 10
-=======
-        db.paginate(db.select(Todo), page=2)
->>>>>>> 6605f9a908d589f7b89c29ac7e84f243de146f29
+        with pytest.raises(NotFound):
+            db.paginate(db.select(Todo), page=2)

@@ -4,15 +4,33 @@ import os
 import typing as t
 from weakref import WeakKeyDictionary
 
-import sqlalchemy as sa
-import sqlalchemy.event
-import sqlalchemy.exc
+import sqlalchemy
 import sqlalchemy.orm
-import sqlalchemy.pool
 from quart import abort
 from quart import current_app
-from quart import Quart
 from quart import has_app_context
+from quart import Quart
+from sqlalchemy import engine_from_config
+from sqlalchemy import event
+from sqlalchemy import MetaData
+from sqlalchemy import Table
+from sqlalchemy.engine import Engine
+from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL
+from sqlalchemy.exc import MultipleResultsFound
+from sqlalchemy.exc import NoResultFound
+from sqlalchemy.exc import UnboundExecutionError
+from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeMeta
+from sqlalchemy.orm import dynamic_loader
+from sqlalchemy.orm import relation
+from sqlalchemy.orm import relationship
+from sqlalchemy.orm import RelationshipProperty
+from sqlalchemy.orm import scoped_session
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import StaticPool
+from sqlalchemy.sql import Select
 
 from .model import _QueryProperty
 from .model import DefaultMeta
@@ -119,10 +137,10 @@ class SQLAlchemy:
         self,
         app: Quart | None = None,
         *,
-        metadata: sa.MetaData | None = None,
+        metadata: MetaData | None = None,
         session_options: dict[str, t.Any] | None = None,
         query_class: t.Type[Query] = Query,
-        model_class: t.Type[Model] | sa.orm.DeclarativeMeta = Model,
+        model_class: t.Type[Model] | DeclarativeMeta = Model,
         engine_options: dict[str, t.Any] | None = None,
         add_models_to_shell: bool = True,
     ):
@@ -153,7 +171,7 @@ class SQLAlchemy:
             The session is scoped to the current app context.
         """
 
-        self.metadatas: dict[str | None, sa.MetaData] = {}
+        self.metadatas: dict[str | None, MetaData] = {}
         """Map of bind keys to :class:`sqlalchemy.schema.MetaData` instances. The
         ``None`` key refers to the default metadata, and is available as
         :attr:`metadata`.
@@ -206,7 +224,7 @@ class SQLAlchemy:
             engine_options = {}
 
         self._engine_options = engine_options
-        self._app_engines: WeakKeyDictionary[Quart, dict[str | None, sa.engine.Engine]]
+        self._app_engines: WeakKeyDictionary[Quart, dict[str | None, Engine]]
         self._app_engines = WeakKeyDictionary()
         self._add_models_to_shell = add_models_to_shell
 
@@ -252,24 +270,20 @@ class SQLAlchemy:
 
             app.shell_context_processor(add_models_to_shell)
 
-        basic_uri: str | sa.engine.URL | None = app.config.setdefault(
-            "SQLALCHEMY_DATABASE_URI", None
-        )
+        basic_uri: str | URL | None = app.config.setdefault("SQLALCHEMY_DATABASE_URI", None)
         basic_engine_options = self._engine_options.copy()
-        basic_engine_options.update(
-            app.config.setdefault("SQLALCHEMY_ENGINE_OPTIONS", {})
-        )
+        basic_engine_options.update(app.config.setdefault("SQLALCHEMY_ENGINE_OPTIONS", {}))
         echo: bool = app.config.setdefault("SQLALCHEMY_ECHO", False)
-        config_binds: dict[
-            str | None, str | sa.engine.URL | dict[str, t.Any]
-        ] = app.config.setdefault("SQLALCHEMY_BINDS", {})
+        config_binds: dict[str | None, str | URL | dict[str, t.Any]] = app.config.setdefault(
+            "SQLALCHEMY_BINDS", {}
+        )
         engine_options: dict[str | None, dict[str, t.Any]] = {}
 
         # Build the engine config for each bind key.
         for key, value in config_binds.items():
             engine_options[key] = self._engine_options.copy()
 
-            if isinstance(value, (str, sa.engine.URL)):
+            if isinstance(value, (str, URL)):
                 engine_options[key]["url"] = value
             else:
                 engine_options[key].update(value)
@@ -314,7 +328,7 @@ class SQLAlchemy:
 
             track_modifications._listen(self.session)
 
-    def _make_scoped_session(self, options: dict[str, t.Any]) -> sa.orm.scoped_session:
+    def _make_scoped_session(self, options: dict[str, t.Any]) -> scoped_session:
         """Create a :class:`sqlalchemy.orm.scoping.scoped_session` around the factory
         from :meth:`_make_session_factory`. The result is available as :attr:`session`.
 
@@ -337,11 +351,11 @@ class SQLAlchemy:
         """
         scope = options.pop("scopefunc", _app_ctx_id)
         factory = self._make_session_factory(options)
-        return sa.orm.scoped_session(factory, scope)
+        return scoped_session(factory, scope)
 
     def _make_session_factory(
         self, options: dict[str, t.Any]
-    ) -> sa.orm.sessionmaker[Session]:  # type: ignore[type-var]
+    ) -> sessionmaker[Session]:  # type: ignore[type-var]
         """Create the SQLAlchemy :class:`sqlalchemy.orm.sessionmaker` used by
         :meth:`_make_scoped_session`.
 
@@ -364,7 +378,7 @@ class SQLAlchemy:
         """
         options.setdefault("class_", Session)
         options.setdefault("query_cls", self.Query)
-        return sa.orm.sessionmaker(db=self, **options)
+        return sessionmaker(db=self, **options)
 
     def _teardown_session(self, exc: BaseException | None) -> None:
         """Remove the current session at the end of the request.
@@ -375,7 +389,7 @@ class SQLAlchemy:
         """
         self.session.remove()
 
-    def _make_metadata(self, bind_key: str | None) -> sa.MetaData:
+    def _make_metadata(self, bind_key: str | None) -> MetaData:
         """Get or create a :class:`sqlalchemy.schema.MetaData` for the given bind key.
 
         This method is used for internal setup. Its signature may change at any time.
@@ -396,13 +410,11 @@ class SQLAlchemy:
             naming_convention = None
 
         # Set the bind key in info to be used by session.get_bind.
-        metadata = sa.MetaData(
-            naming_convention=naming_convention, info={"bind_key": bind_key}
-        )
+        metadata = MetaData(naming_convention=naming_convention, info={"bind_key": bind_key})
         self.metadatas[bind_key] = metadata
         return metadata
 
-    def _make_table_class(self) -> t.Type[sa.Table]:
+    def _make_table_class(self) -> t.Type[Table]:
         """Create a SQLAlchemy :class:`sqlalchemy.schema.Table` class that chooses a
         metadata automatically based on the ``bind_key``. The result is available as
         :attr:`Table`.
@@ -414,13 +426,11 @@ class SQLAlchemy:
         .. versionadded:: 3.0
         """
 
-        class Table(sa.Table):
-            def __new__(
-                cls, *args: t.Any, bind_key: str | None = None, **kwargs: t.Any
-            ) -> Table:
+        class Table(sqlalchemy.Table):
+            def __new__(cls, *args: t.Any, bind_key: str | None = None, **kwargs: t.Any) -> Table:
                 # If a metadata arg is passed, go directly to the base Table. Also do
                 # this for no args so the correct error is shown.
-                if not args or (len(args) >= 2 and isinstance(args[1], sa.MetaData)):
+                if not args or (len(args) >= 2 and isinstance(args[1], MetaData)):
                     return super().__new__(cls, *args, **kwargs)
 
                 metadata = self._make_metadata(bind_key)
@@ -428,9 +438,7 @@ class SQLAlchemy:
 
         return Table
 
-    def _make_declarative_base(
-        self, model: t.Type[Model] | sa.orm.DeclarativeMeta
-    ) -> t.Type[t.Any]:
+    def _make_declarative_base(self, model: t.Type[Model] | DeclarativeMeta) -> t.Type[t.Any]:
         """Create a SQLAlchemy declarative model class. The result is available as
         :attr:`Model`.
 
@@ -450,9 +458,9 @@ class SQLAlchemy:
         .. versionchanged:: 2.3
             ``model`` can be an already created declarative model class.
         """
-        if not isinstance(model, sa.orm.DeclarativeMeta):
+        if not isinstance(model, DeclarativeMeta):
             metadata = self._make_metadata(None)
-            model = sa.orm.declarative_base(
+            model = declarative_base(
                 metadata=metadata, cls=model, name="Model", metaclass=DefaultMeta
             )
 
@@ -500,11 +508,11 @@ class SQLAlchemy:
         .. versionchanged:: 2.5
             Returns ``(sa_url, options)``.
         """
-        url = sa.engine.make_url(options["url"])
+        url = make_url(options["url"])
 
         if url.drivername in {"sqlite", "sqlite+pysqlite"}:
             if url.database is None or url.database in {"", ":memory:"}:
-                options["poolclass"] = sa.pool.StaticPool
+                options["poolclass"] = StaticPool
 
                 if "connect_args" not in options:
                     options["connect_args"] = {}
@@ -529,18 +537,13 @@ class SQLAlchemy:
                     options["url"] = url.set(database=db_str)
         elif url.drivername.startswith("mysql"):
             # set queue defaults only when using queue pool
-            if (
-                "pool_class" not in options
-                or options["pool_class"] is sa.pool.QueuePool
-            ):
+            if "pool_class" not in options or options["pool_class"] is QueuePool:
                 options.setdefault("pool_recycle", 7200)
 
             if "charset" not in url.query:
                 options["url"] = url.update_query_dict({"charset": "utf8mb4"})
 
-    def _make_engine(
-        self, bind_key: str | None, options: dict[str, t.Any], app: Quart
-    ) -> sa.engine.Engine:
+    def _make_engine(self, bind_key: str | None, options: dict[str, t.Any], app: Quart) -> Engine:
         """Create the :class:`sqlalchemy.engine.Engine` for the given bind key and app.
 
         To customize, use :data:`.SQLALCHEMY_ENGINE_OPTIONS` or
@@ -558,17 +561,17 @@ class SQLAlchemy:
         .. versionchanged:: 3.0
             Renamed from ``create_engine``, this method is internal.
         """
-        return sa.engine_from_config(options, prefix="")
+        return engine_from_config(options, prefix="")
 
     @property
-    def metadata(self) -> sa.MetaData:
+    def metadata(self) -> MetaData:
         """The default metadata used by :attr:`Model` and :attr:`Table` if no bind key
         is set.
         """
         return self.metadatas[None]
 
     @property
-    def engines(self) -> t.Mapping[str | None, sa.engine.Engine]:
+    def engines(self) -> t.Mapping[str | None, Engine]:
         """Map of bind keys to :class:`sqlalchemy.engine.Engine` instances for current
         application. The ``None`` key refers to the default engine, and is available as
         :attr:`engine`.
@@ -580,11 +583,16 @@ class SQLAlchemy:
 
         .. versionadded:: 3.0
         """
-        app = current_app._get_current_object()  # type: ignore[attr-defined]
+        app = current_app._get_current_object()
         return self._app_engines[app]
 
+    # def get_app(self):
+    #     if hasattr(self, 'app'):
+    #         return self.app
+    #     return current_app._get_current_object()
+
     @property
-    def engine(self) -> sa.engine.Engine:
+    def engine(self) -> Engine:
         """The default :class:`~sqlalchemy.engine.Engine` for the current application,
         used by :attr:`session` if the :attr:`Model` or :attr:`Table` being queried does
         not set a bind key.
@@ -615,9 +623,7 @@ class SQLAlchemy:
 
         return value
 
-    def first_or_404(
-        self, statement: sa.sql.Select, *, description: str | None = None
-    ) -> t.Any:
+    def first_or_404(self, statement: Select, *, description: str | None = None) -> t.Any:
         """Like :meth:`Result.scalar() <sqlalchemy.engine.Result.scalar>`, but aborts
         with a ``404 Not Found`` error instead of returning ``None``.
 
@@ -633,9 +639,7 @@ class SQLAlchemy:
 
         return value
 
-    def one_or_404(
-        self, statement: sa.sql.Select, *, description: str | None = None
-    ) -> t.Any:
+    def one_or_404(self, statement: Select, *, description: str | None = None) -> t.Any:
         """Like :meth:`Result.scalar_one() <sqlalchemy.engine.Result.scalar_one>`,
         but aborts with a ``404 Not Found`` error instead of raising ``NoResultFound``
         or ``MultipleResultsFound``.
@@ -647,12 +651,12 @@ class SQLAlchemy:
         """
         try:
             return self.session.execute(statement).scalar_one()
-        except (sa.exc.NoResultFound, sa.exc.MultipleResultsFound):
+        except (NoResultFound, MultipleResultsFound):
             abort(404, description=description)
 
     def paginate(
         self,
-        select: sa.sql.Select,
+        select: Select,
         *,
         page: int | None = None,
         per_page: int | None = None,
@@ -697,9 +701,7 @@ class SQLAlchemy:
             count=count,
         )
 
-    def _call_for_binds(
-        self, bind_key: str | None | list[str | None], op_name: str
-    ) -> None:
+    def _call_for_binds(self, bind_key: str | None | list[str | None], op_name: str) -> None:
         """Call a method on each metadata.
 
         :meta private:
@@ -726,7 +728,7 @@ class SQLAlchemy:
                 if key is None:
                     message = f"'SQLALCHEMY_DATABASE_URI' config is not set. {message}"
 
-                raise sa.exc.UnboundExecutionError(message) from None
+                raise UnboundExecutionError(message) from None
 
             metadata = self.metadatas[key]
             getattr(metadata, op_name)(bind=engine)
@@ -801,9 +803,7 @@ class SQLAlchemy:
 
             backref[1].setdefault("query_class", self.Query)
 
-    def relationship(
-        self, *args: t.Any, **kwargs: t.Any
-    ) -> sa.orm.RelationshipProperty[t.Any]:
+    def relationship(self, *args: t.Any, **kwargs: t.Any) -> RelationshipProperty[t.Any]:
         """A :func:`sqlalchemy.orm.relationship` that applies this extension's
         :attr:`Query` class for dynamic relationships and backrefs.
 
@@ -811,11 +811,9 @@ class SQLAlchemy:
             The :attr:`Query` class is set on ``backref``.
         """
         self._set_rel_query(kwargs)
-        return sa.orm.relationship(*args, **kwargs)
+        return relationship(*args, **kwargs)
 
-    def dynamic_loader(
-        self, argument: t.Any, **kwargs: t.Any
-    ) -> sa.orm.RelationshipProperty[t.Any]:
+    def dynamic_loader(self, argument: t.Any, **kwargs: t.Any) -> RelationshipProperty[t.Any]:
         """A :func:`sqlalchemy.orm.dynamic_loader` that applies this extension's
         :attr:`Query` class for relationships and backrefs.
 
@@ -823,11 +821,9 @@ class SQLAlchemy:
             The :attr:`Query` class is set on ``backref``.
         """
         self._set_rel_query(kwargs)
-        return sa.orm.dynamic_loader(argument, **kwargs)
+        return dynamic_loader(argument, **kwargs)
 
-    def _relation(
-        self, *args: t.Any, **kwargs: t.Any
-    ) -> sa.orm.RelationshipProperty[t.Any]:
+    def _relation(self, *args: t.Any, **kwargs: t.Any) -> RelationshipProperty[t.Any]:
         """A :func:`sqlalchemy.orm.relationship` that applies this extension's
         :attr:`Query` class for dynamic relationships and backrefs.
 
@@ -839,19 +835,19 @@ class SQLAlchemy:
             The :attr:`Query` class is set on ``backref``.
         """
         self._set_rel_query(kwargs)
-        return sa.orm.relation(*args, **kwargs)
+        return relation(*args, **kwargs)
 
     def __getattr__(self, name: str) -> t.Any:
         if name == "relation":
             return self._relation
 
         if name == "event":
-            return sa.event
+            return event
 
         if name.startswith("_"):
             raise AttributeError(name)
 
-        for mod in (sa, sa.orm):
+        for mod in (sqlalchemy, sqlalchemy.orm):
             if hasattr(mod, name):
                 return getattr(mod, name)
 

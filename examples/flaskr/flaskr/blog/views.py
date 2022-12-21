@@ -1,15 +1,15 @@
-from flask import Blueprint
-from flask import flash
-from flask import g
-from flask import redirect
-from flask import render_template
-from flask import request
-from flask import url_for
+from quart import Blueprint
+from quart import flash
+from quart import g
+from quart import redirect
+from quart import render_template
+from quart import request
+from quart import url_for
 from werkzeug.exceptions import abort
 
-from flaskr import db
-from flaskr.auth.views import login_required
-from flaskr.blog.models import Post
+from quartr import db
+from quartr.auth.views import login_required
+from quartr.blog.models import Post
 
 bp = Blueprint("blog", __name__)
 

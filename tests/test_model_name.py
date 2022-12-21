@@ -5,15 +5,10 @@ import typing as t
 
 import pytest
 import sqlalchemy as sa
-import sqlalchemy.exc
 import sqlalchemy.orm
 
-<<<<<<< HEAD:tests/test_table_name.py
+from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.model import camel_to_snake_case
-=======
-from flask_sqlalchemy import SQLAlchemy
-from flask_sqlalchemy.model import camel_to_snake_case
->>>>>>> 6605f9a908d589f7b89c29ac7e84f243de146f29:tests/test_model_name.py
 
 
 @pytest.mark.parametrize(

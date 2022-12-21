@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 
-from flask_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy import SQLAlchemy
 
 
 def test_bind_key_default(db: SQLAlchemy) -> None:
