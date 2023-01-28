@@ -19,3 +19,4 @@ venv/
 .pdm.toml
 pytest-plugin-work
 old
+examples/two/

@@ -23,7 +23,6 @@ from sqlalchemy.exc import UnboundExecutionError
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import DeclarativeMeta
 from sqlalchemy.orm import dynamic_loader
-from sqlalchemy.orm import relation
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import RelationshipProperty
 from sqlalchemy.orm import scoped_session
@@ -322,11 +321,6 @@ class SQLAlchemy:
 
             for engine in engines.values():
                 record_queries._listen(engine)
-
-        if app.config.setdefault("SQLALCHEMY_TRACK_MODIFICATIONS", False):
-            from . import track_modifications
-
-            track_modifications._listen(self.session)
 
     def _make_scoped_session(self, options: dict[str, t.Any]) -> scoped_session:
         """Create a :class:`sqlalchemy.orm.scoping.scoped_session` around the factory
@@ -835,7 +829,7 @@ class SQLAlchemy:
             The :attr:`Query` class is set on ``backref``.
         """
         self._set_rel_query(kwargs)
-        return relation(*args, **kwargs)
+        return relationship(*args, **kwargs)
 
     def __getattr__(self, name: str) -> t.Any:
         if name == "relation":
