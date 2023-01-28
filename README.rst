@@ -1,8 +1,8 @@
 Quart-SQLAlchemy
 ================
 
-Quart-SQLAlchemy is an extension for `Quart`_ that adds support for
-`SQLAlchemy`_ to your application. It aims to simplify using SQLAlchemy
+Quart-SQLAlchemy is an extension for `Quart` that adds support for
+`SQLAlchemy` to your application. It aims to simplify using SQLAlchemy
 with Quart by providing useful defaults and extra helpers that make it
 easier to accomplish common tasks.
 
@@ -17,7 +17,7 @@ Install and update using `pip`_:
 
 .. code-block:: text
 
-  $ pip install -U Quart-SQLAlchemy
+  $ pip install -U quart-sqlalchemy
 
 .. _pip: https://pip.pypa.io/en/stable/getting-started/
 
