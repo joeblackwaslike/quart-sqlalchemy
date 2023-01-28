@@ -516,11 +516,7 @@ class SQLAlchemy:
                 # the url might look like sqlite:///file:path?uri=true
                 is_uri = url.query.get("uri", False)
 
-                if is_uri:
-                    db_str = url.database[5:]
-                else:
-                    db_str = url.database
-
+                db_str = url.database[5:] if is_uri else url.database
                 if not os.path.isabs(db_str):
                     os.makedirs(app.instance_path, exist_ok=True)
                     db_str = os.path.join(app.instance_path, db_str)
