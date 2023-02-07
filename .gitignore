@@ -20,3 +20,5 @@ venv/
 pytest-plugin-work
 old
 examples/two/
+*.sqlite
+*.db

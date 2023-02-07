@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import sqlalchemy as sa
+import sqlalchemy
 from quart import Quart
 
 from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.record_queries import get_recorded_queries
+
+
+sa = sqlalchemy
 
 
 async def test_query_info(app: Quart) -> None:

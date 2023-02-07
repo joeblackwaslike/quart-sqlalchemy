@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import Generator, Any
 import warnings
+from typing import Any
+from typing import Generator
 
 import pytest
-import sqlalchemy as sa
+import sqlalchemy
+import sqlalchemy.exc
 from quart import Quart
 from werkzeug.exceptions import NotFound
 
@@ -12,11 +14,14 @@ from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.query import Query
 
 
+sa = sqlalchemy
+
+
 @pytest.fixture(autouse=True)
 def ignore_query_warning() -> Generator[None, None, None]:
     if hasattr(sa.exc, "LegacyAPIWarning"):
         with warnings.catch_warnings():
-            exc = sa.exc.LegacyAPIWarning  # type: ignore[attr-defined]
+            exc = sa.exc.LegacyAPIWarning
             warnings.simplefilter("ignore", exc)
             yield
     else:

@@ -5,21 +5,21 @@ from quart import redirect
 from quart import render_template
 from quart import request
 from quart import url_for
-from werkzeug.exceptions import abort
-
 from quartr import db
 from quartr.auth.views import login_required
 from quartr.blog.models import Post
+from werkzeug.exceptions import abort
+
 
 bp = Blueprint("blog", __name__)
 
 
 @bp.route("/")
-def index():
+async def index():
     """Show all the posts, most recent first."""
     select = db.select(Post).order_by(Post.created.desc())
-    posts = db.session.execute(select).scalars()
-    return render_template("blog/index.html", posts=posts)
+    posts = (await db.session.execute(select)).scalars()
+    return await render_template("blog/index.html", posts=posts)
 
 
 def get_post(id, check_author=True):
@@ -34,7 +34,7 @@ def get_post(id, check_author=True):
     :raise 404: if a post with the given id doesn't exist
     :raise 403: if the current user isn't the author
     """
-    post = db.get_or_404(Post, id, description=f"Post id {id} doesn't exist.")
+    post = await db.session.get_or_404(Post, id, description=f"Post id {id} doesn't exist.")
 
     if check_author and post.author != g.user:
         abort(403)
@@ -44,24 +44,24 @@ def get_post(id, check_author=True):
 
 @bp.route("/create", methods=("GET", "POST"))
 @login_required
-def create():
+async def create():
     """Create a new post for the current user."""
     if request.method == "POST":
-        title = request.form["title"]
-        body = request.form["body"]
+        title = (await request.form)["title"]
+        body = (await request.form)["body"]
         error = None
 
         if not title:
             error = "Title is required."
 
         if error is not None:
-            flash(error)
+            await flash(error)
         else:
             db.session.add(Post(title=title, body=body, author=g.user))
-            db.session.commit()
+            await db.session.commit()
             return redirect(url_for("blog.index"))
 
-    return render_template("blog/create.html")
+    return await render_template("blog/create.html")
 
 
 @bp.route("/<int:id>/update", methods=("GET", "POST"))

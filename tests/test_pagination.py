@@ -12,16 +12,14 @@ from quart_sqlalchemy.pagination import Pagination
 
 
 class RangePagination(Pagination):
-    def __init__(
-        self, total: Optional[int] = 150, page: int = 1, per_page: int = 10
-    ) -> None:
+    def __init__(self, total: Optional[int] = 150, page: int = 1, per_page: int = 10) -> None:
         if total is None:
             self._data = range(150)
         else:
             self._data = range(total)
 
         super().__init__(total=total, page=page, per_page=per_page)
-
+        super().get_items()
         if total is None:
             self.total = None
 
@@ -35,7 +33,7 @@ class RangePagination(Pagination):
 
 
 def test_first_page() -> None:
-    p = RangePagination()
+    p = RangePagination().get_items()
     assert p.page == 1
     assert p.per_page == 10
     assert p.total == 150
@@ -135,7 +133,7 @@ class _PaginateCallable:
     ) -> Pagination:
         qs = {"page": page, "per_page": per_page}
         async with self.app.test_request_context("/", query_string=qs):
-            return self.db.paginate(
+            return self.db.session.paginate(
                 self.db.select(self.Todo),
                 max_per_page=max_per_page,
                 error_out=error_out,
@@ -189,8 +187,9 @@ async def test_error_out(paginate: _PaginateCallable, page: t.Any, per_page: t.A
 
 async def test_no_items_404(app: Quart, db: SQLAlchemy, Todo: t.Any) -> None:
     async with app.app_context():
-        p = db.paginate(db.select(Todo))
+        p = db.session.paginate(db.select(Todo))
+
         assert len(p.items) == 0
 
         with pytest.raises(NotFound):
-            db.paginate(db.select(Todo), page=2)
+            db.session.paginate(db.select(Todo), page=2)

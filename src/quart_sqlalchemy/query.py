@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import typing as t
 
-import sqlalchemy as sa
+import sqlalchemy
 import sqlalchemy.exc
 import sqlalchemy.orm
 from quart import abort
 
 from .pagination import Pagination
 from .pagination import QueryPagination
+
+
+sa = sqlalchemy
 
 
 class Query(sa.orm.Query):  # type: ignore[type-arg]
@@ -21,7 +24,7 @@ class Query(sa.orm.Query):  # type: ignore[type-arg]
         Renamed to ``Query`` from ``BaseQuery``.
     """
 
-    def get_or_404(self, ident: t.Any, description: str | None = None) -> t.Any:
+    def get_or_404(self, ident: t.Any, description: t.Optional[str] = None) -> t.Any:
         """Like :meth:`~sqlalchemy.orm.Query.get` but aborts with a ``404 Not Found``
         error instead of returning ``None``.
 
@@ -35,7 +38,7 @@ class Query(sa.orm.Query):  # type: ignore[type-arg]
 
         return rv
 
-    def first_or_404(self, description: str | None = None) -> t.Any:
+    def first_or_404(self, description: t.Optional[str] = None) -> t.Any:
         """Like :meth:`~sqlalchemy.orm.Query.first` but aborts with a ``404 Not Found``
         error instead of returning ``None``.
 
@@ -48,7 +51,7 @@ class Query(sa.orm.Query):  # type: ignore[type-arg]
 
         return rv
 
-    def one_or_404(self, description: str | None = None) -> t.Any:
+    def one_or_404(self, description: t.Optional[str] = None) -> t.Any:
         """Like :meth:`~sqlalchemy.orm.Query.one` but aborts with a ``404 Not Found``
         error instead of raising ``NoResultFound`` or ``MultipleResultsFound``.
 
@@ -64,9 +67,9 @@ class Query(sa.orm.Query):  # type: ignore[type-arg]
     def paginate(
         self,
         *,
-        page: int | None = None,
-        per_page: int | None = None,
-        max_per_page: int | None = None,
+        page: t.Optional[int] = None,
+        per_page: t.Optional[int] = None,
+        max_per_page: t.Optional[int] = None,
         error_out: bool = True,
         count: bool = True,
     ) -> Pagination:
@@ -103,4 +106,4 @@ class Query(sa.orm.Query):  # type: ignore[type-arg]
             max_per_page=max_per_page,
             error_out=error_out,
             count=count,
-        )
+        ).get_items()

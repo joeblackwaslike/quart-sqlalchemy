@@ -2,43 +2,42 @@ from __future__ import annotations
 
 import os
 import typing as t
+from contextlib import contextmanager
+from copy import deepcopy
+from dataclasses import dataclass
+from dataclasses import field
+from dataclasses import InitVar
 from weakref import WeakKeyDictionary
 
+import quart
 import sqlalchemy
+import sqlalchemy.exc
+import sqlalchemy.ext
+import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
-from quart import abort
-from quart import current_app
 from quart import has_app_context
 from quart import Quart
-from sqlalchemy import engine_from_config
-from sqlalchemy import event
-from sqlalchemy import MetaData
-from sqlalchemy import Table
-from sqlalchemy.engine import Engine
-from sqlalchemy.engine import make_url
-from sqlalchemy.engine import URL
-from sqlalchemy.exc import MultipleResultsFound
-from sqlalchemy.exc import NoResultFound
-from sqlalchemy.exc import UnboundExecutionError
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import DeclarativeMeta
-from sqlalchemy.orm import dynamic_loader
-from sqlalchemy.orm import relationship
-from sqlalchemy.orm import RelationshipProperty
-from sqlalchemy.orm import scoped_session
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import QueuePool
-from sqlalchemy.pool import StaticPool
-from sqlalchemy.sql import Select
+from quart.globals import app_ctx
 
+from . import signals
 from .model import _QueryProperty
 from .model import DefaultMeta
-from .model import Model
-from .pagination import Pagination
-from .pagination import SelectPagination
-from .query import Query
+from .model import Model as CustomModel
+from .query import Query as CustomQuery
 from .session import _app_ctx_id
-from .session import Session
+from .session import async_scoped_session
+from .session import RoutingSession
+from .session import scoped_session
+from .signals import EngineContext
+from .signals import ScopedSessionContext
+from .signals import SessionmakerContext
+from .table import _Table
+from .testing.transaction import SyncTestTransaction
+from .types import ScopedSessionType
+from .types import SessionType
+
+
+sa = sqlalchemy
 
 
 class SQLAlchemy:
@@ -52,7 +51,7 @@ class SQLAlchemy:
     application.
 
     After creating the extension, create model classes by subclassing :attr:`Model`, and
-    table classes with :attr:`Table`. These can be accessed before :meth:`init_app` is
+    table classes with :attr:`sa.Table`. These can be accessed before :meth:`init_app` is
     called, making it possible to define the models separately from the application.
 
     Accessing :attr:`session` and :attr:`engine` requires an active Quart application
@@ -80,71 +79,40 @@ class SQLAlchemy:
         for a list of arguments.
     :param add_models_to_shell: Add the ``db`` instance and all model classes to
         ``quart shell``.
-
-    .. versionchanged:: 3.0
-        An active Quart application context is always required to access ``session`` and
-        ``engine``.
-
-    .. versionchanged:: 3.0
-        Separate ``metadata`` are used for each bind key.
-
-    .. versionchanged:: 3.0
-        The ``engine_options`` parameter is applied as defaults before per-engine
-        configuration.
-
-    .. versionchanged:: 3.0
-        The session class can be customized in ``session_options``.
-
-    .. versionchanged:: 3.0
-        Added the ``add_models_to_shell`` parameter.
-
-    .. versionchanged:: 3.0
-        Engines are created when calling ``init_app`` rather than the first time they
-        are accessed.
-
-    .. versionchanged:: 3.0
-        All parameters except ``app`` are keyword-only.
-
-    .. versionchanged:: 3.0
-        The extension instance is stored directly as ``app.extensions["sqlalchemy"]``.
-
-    .. versionchanged:: 3.0
-        Setup methods are renamed with a leading underscore. They are considered
-        internal interfaces which may change at any time.
-
-    .. versionchanged:: 3.0
-        Removed the ``use_native_unicode`` parameter and config.
-
-    .. versionchanged:: 2.4
-        Added the ``engine_options`` parameter.
-
-    .. versionchanged:: 2.1
-        Added the ``metadata``, ``query_class``, and ``model_class`` parameters.
-
-    .. versionchanged:: 2.1
-        Use the same query class across ``session``, ``Model.query`` and
-        ``Query``.
-
-    .. versionchanged:: 0.16
-        ``scopefunc`` is accepted in ``session_options``.
-
-    .. versionchanged:: 0.10
-        Added the ``session_options`` parameter.
     """
+
+    metadatas: dict[str | None, sa.MetaData]
+    Model: type[t.Any]
+    Table: type[sa.Table]
+    Query: type[sa.orm.Query]
+
+    _scoped_sessions: dict[str | None, ScopedSessionType]
+    _app_engines: WeakKeyDictionary[Quart, dict[str | None, sa.Engine]]
+    _session_class: type[sa.orm.Session]
+    _engine_options: dict[str, t.Any]
+    _session_options: dict[str, t.Any]
+    _add_models_to_shell: bool
+    _last_app_ctx: t.Optional[quart.ctx.AppContext]
+    _context_caching_enabled: bool
+    _is_async_session: bool
 
     def __init__(
         self,
         app: Quart | None = None,
         *,
-        metadata: MetaData | None = None,
-        session_options: dict[str, t.Any] | None = None,
-        query_class: t.Type[Query] = Query,
-        model_class: t.Type[Model] | DeclarativeMeta = Model,
-        engine_options: dict[str, t.Any] | None = None,
+        metadata: t.Optional[sa.MetaData] = None,
+        session_options: t.Optional[dict[str, t.Any]] = None,
+        session_scopefunc: t.Callable[[], int] = _app_ctx_id,
+        session_class: type[sa.orm.Session] = RoutingSession,
+        is_async_session: bool = False,
+        query_class: type[sa.orm.Query] = CustomQuery,
+        model_class: type[t.Any] | sa.orm.DeclarativeMeta = CustomModel,
+        engine_options: t.Optional[dict[str, t.Any]] = None,
         add_models_to_shell: bool = True,
+        context_caching_enabled: bool = False,
     ):
-        if session_options is None:
-            session_options = {}
+        self._session_options = session_options or {}
+        self._is_async_session = is_async_session
 
         self.Query = query_class
         """The default query class used by ``Model.query`` and ``lazy="dynamic"``
@@ -156,8 +124,13 @@ class SQLAlchemy:
         Customize this by passing the ``query_class`` parameter to the extension.
         """
 
-        self.session = self._make_scoped_session(session_options)
-        """A :class:`sqlalchemy.orm.scoping.scoped_session` that creates instances of
+        self.session_scopefunc = session_scopefunc
+        self._session_class = session_class
+
+        self.session = self._make_scoped_session(
+            self._session_options, is_async=self._is_async_session
+        )
+        """A :class:`sa.orm.scoped_session` that creates instances of
         :class:`.Session` scoped to the current Quart application context. The session
         will be removed, returning the engine connection to the pool, when the
         application context exits.
@@ -165,12 +138,9 @@ class SQLAlchemy:
         Customize this by passing ``session_options`` to the extension.
 
         This requires that a Quart application context is active.
-
-        .. versionchanged:: 3.0
-            The session is scoped to the current app context.
         """
 
-        self.metadatas: dict[str | None, MetaData] = {}
+        self.metadatas = {}
         """Map of bind keys to :class:`sqlalchemy.schema.MetaData` instances. The
         ``None`` key refers to the default metadata, and is available as
         :attr:`metadata`.
@@ -178,8 +148,6 @@ class SQLAlchemy:
         Customize the default metadata by passing the ``metadata`` parameter to the
         extension. This can be used to set a naming convention. When metadata for
         another bind key is created, it copies the default's naming convention.
-
-        .. versionadded:: 3.0
         """
 
         if metadata is not None:
@@ -197,9 +165,6 @@ class SQLAlchemy:
         :param args: Arguments passed to the base class. These are typically the table's
             name, columns, and constraints.
         :param kwargs: Arguments passed to the base class.
-
-        .. versionchanged:: 3.0
-            This is a subclass of SQLAlchemy's ``Table`` rather than a function.
         """
 
         self.Model = self._make_declarative_base(model_class)
@@ -218,28 +183,18 @@ class SQLAlchemy:
         parameter to the extension. A fully created declarative model class can be
         passed as well, to use a custom metaclass.
         """
-
-        if engine_options is None:
-            engine_options = {}
-
-        self._engine_options = engine_options
-        self._app_engines: WeakKeyDictionary[Quart, dict[str | None, Engine]]
-        self._app_engines = WeakKeyDictionary()
         self._add_models_to_shell = add_models_to_shell
+
+        self._engine_options = engine_options or {}
+        self._app_engines = WeakKeyDictionary()
+
+        self._scoped_sessions = {}
+
+        self._context_caching_enabled = context_caching_enabled
+        self._last_app_ctx = None
 
         if app is not None:
             self.init_app(app)
-
-    def __repr__(self) -> str:
-        if not has_app_context():
-            return f"<{type(self).__name__}>"
-
-        message = f"{type(self).__name__} {self.engine.url}"
-
-        if len(self.engines) > 1:
-            message = f"{message} +{len(self.engines) - 1}"
-
-        return f"<{message}>"
 
     def init_app(self, app: Quart) -> None:
         """Initialize a Quart application for use with this extension instance. This
@@ -261,19 +216,26 @@ class SQLAlchemy:
 
         :param app: The Quart application to initialize.
         """
+        if "sqlalchemy" in app.extensions:
+            raise RuntimeError(
+                "A 'SQLAlchemy' instance has already been registered on this Flask app."
+                " Import and use that instance instead."
+            )
+
         app.extensions["sqlalchemy"] = self
         app.teardown_appcontext(self._teardown_session)
+        app.teardown_appcontext(self._teardown_async_session)
 
         if self._add_models_to_shell:
             from .cli import add_models_to_shell
 
             app.shell_context_processor(add_models_to_shell)
 
-        basic_uri: str | URL | None = app.config.setdefault("SQLALCHEMY_DATABASE_URI", None)
+        basic_uri: str | sa.URL | None = app.config.setdefault("SQLALCHEMY_DATABASE_URI", None)
         basic_engine_options = self._engine_options.copy()
         basic_engine_options.update(app.config.setdefault("SQLALCHEMY_ENGINE_OPTIONS", {}))
         echo: bool = app.config.setdefault("SQLALCHEMY_ECHO", False)
-        config_binds: dict[str | None, str | URL | dict[str, t.Any]] = app.config.setdefault(
+        config_binds: dict[str | None, str | sa.URL | dict[str, t.Any]] = app.config.setdefault(
             "SQLALCHEMY_BINDS", {}
         )
         engine_options: dict[str | None, dict[str, t.Any]] = {}
@@ -282,7 +244,7 @@ class SQLAlchemy:
         for key, value in config_binds.items():
             engine_options[key] = self._engine_options.copy()
 
-            if isinstance(value, (str, URL)):
+            if isinstance(value, (str, sa.URL)):
                 engine_options[key]["url"] = value
             else:
                 engine_options[key].update(value)
@@ -322,7 +284,18 @@ class SQLAlchemy:
             for engine in engines.values():
                 record_queries._listen(engine)
 
-    def _make_scoped_session(self, options: dict[str, t.Any]) -> scoped_session:
+        if self._context_caching_enabled:
+
+            @quart.signals.appcontext_pushed.connect_via(app)
+            def _handle_appcontext_pushed(app: Quart):
+                nonlocal self
+                self._last_app_ctx = app_ctx._get_current_object()
+
+    def _make_scoped_session(
+        self,
+        options: dict[str, t.Any],
+        is_async: bool = False,
+    ) -> t.Union[scoped_session, async_scoped_session]:
         """Create a :class:`sqlalchemy.orm.scoping.scoped_session` around the factory
         from :meth:`_make_session_factory`. The result is available as :attr:`session`.
 
@@ -332,24 +305,36 @@ class SQLAlchemy:
 
         This method is used for internal setup. Its signature may change at any time.
 
-        :meta private:
-
         :param options: The ``session_options`` parameter from ``__init__``. Keyword
             arguments passed to the session factory. A ``scopefunc`` key is popped.
-
-        .. versionchanged:: 3.0
-            The session is scoped to the current app context.
-
-        .. versionchanged:: 3.0
-            Renamed from ``create_scoped_session``, this method is internal.
         """
-        scope = options.pop("scopefunc", _app_ctx_id)
-        factory = self._make_session_factory(options)
-        return scoped_session(factory, scope)
+        options = options.copy()
+
+        context = ScopedSessionContext(
+            is_async=is_async,
+            scopefunc=options.pop("scopefunc", self.get_session_scope),
+            options=options,
+            session_factory=self._make_session_factory,
+            scoped_session_factory=async_scoped_session if is_async else scoped_session,
+        )
+
+        signals.before_make_scoped_session.send(self, context=context)
+
+        factory = context.session_factory(context.options, is_async=is_async)
+        session = context.scoped_session_factory(
+            factory,  # type: ignore
+            scopefunc=context.scopefunc,
+        )
+
+        signals.after_make_scoped_session.send(self, scoped_session=session)
+
+        return session
 
     def _make_session_factory(
-        self, options: dict[str, t.Any]
-    ) -> sessionmaker[Session]:  # type: ignore[type-var]
+        self,
+        options: dict[str, t.Any],
+        is_async: bool = False,
+    ) -> SessionType:
         """Create the SQLAlchemy :class:`sqlalchemy.orm.sessionmaker` used by
         :meth:`_make_scoped_session`.
 
@@ -359,40 +344,55 @@ class SQLAlchemy:
 
         This method is used for internal setup. Its signature may change at any time.
 
-        :meta private:
-
         :param options: The ``session_options`` parameter from ``__init__``. Keyword
             arguments passed to the session factory.
-
-        .. versionchanged:: 3.0
-            The session class can be customized.
-
-        .. versionchanged:: 3.0
-            Renamed from ``create_session``, this method is internal.
         """
-        options.setdefault("class_", Session)
+        options = options.copy()
+
+        options.setdefault("db", self)
         options.setdefault("query_cls", self.Query)
-        return sessionmaker(db=self, **options)
+        options.setdefault("expire_on_commit", False)
+
+        if is_async:
+            options.setdefault("sync_session_class", self._session_class)
+            factory = sa.ext.asyncio.async_sessionmaker
+        else:
+            options.setdefault("class_", self._session_class)
+            factory = sa.orm.sessionmaker
+
+        context = SessionmakerContext(
+            is_async=is_async,
+            options=options,
+            factory=factory,
+        )
+
+        signals.before_make_session_factory.send(self, context=context)
+
+        session_factory = context.factory(**context.options)
+
+        signals.after_make_session_factory.send(self, session_factory=session_factory)
+
+        return session_factory
+
+    def test_transaction(self, bind_key: t.Optional[str] = None, savepoint=True):
+        return SyncTestTransaction(self, bind_key, savepoint=savepoint)
 
     def _teardown_session(self, exc: BaseException | None) -> None:
-        """Remove the current session at the end of the request.
+        """Remove the current session at the end of the request."""
+        if isinstance(self.session, sa.orm.scoped_session):
+            self.session.remove()
 
-        :meta private:
+    async def _teardown_async_session(self, exc: BaseException | None) -> None:
+        """Remove the current session at the end of the request."""
+        if isinstance(self.session, sa.ext.asyncio.async_scoped_session):
+            await self.session.remove()
 
-        .. versionadded:: 3.0
-        """
-        self.session.remove()
-
-    def _make_metadata(self, bind_key: str | None) -> MetaData:
+    def _make_metadata(self, bind_key: str | None) -> sa.MetaData:
         """Get or create a :class:`sqlalchemy.schema.MetaData` for the given bind key.
 
         This method is used for internal setup. Its signature may change at any time.
 
-        :meta private:
-
         :param bind_key: The name of the metadata being created.
-
-        .. versionadded:: 3.0
         """
         if bind_key in self.metadatas:
             return self.metadatas[bind_key]
@@ -404,35 +404,31 @@ class SQLAlchemy:
             naming_convention = None
 
         # Set the bind key in info to be used by session.get_bind.
-        metadata = MetaData(naming_convention=naming_convention, info={"bind_key": bind_key})
+        metadata = sa.MetaData(naming_convention=naming_convention, info={"bind_key": bind_key})
         self.metadatas[bind_key] = metadata
         return metadata
 
-    def _make_table_class(self) -> t.Type[Table]:
+    def _make_table_class(self) -> type[sa.Table]:
         """Create a SQLAlchemy :class:`sqlalchemy.schema.Table` class that chooses a
         metadata automatically based on the ``bind_key``. The result is available as
         :attr:`Table`.
 
         This method is used for internal setup. Its signature may change at any time.
-
-        :meta private:
-
-        .. versionadded:: 3.0
         """
 
-        class Table(sqlalchemy.Table):
+        class Table(_Table):
             def __new__(cls, *args: t.Any, bind_key: str | None = None, **kwargs: t.Any) -> Table:
                 # If a metadata arg is passed, go directly to the base Table. Also do
                 # this for no args so the correct error is shown.
-                if not args or (len(args) >= 2 and isinstance(args[1], MetaData)):
+                if not args or (len(args) >= 2 and isinstance(args[1], sa.MetaData)):
                     return super().__new__(cls, *args, **kwargs)
 
                 metadata = self._make_metadata(bind_key)
-                return super().__new__(cls, args[0], metadata, *args[1:], **kwargs)
+                return super().__new__(cls, *[args[0], metadata, *args[1:]], **kwargs)
 
         return Table
 
-    def _make_declarative_base(self, model: t.Type[Model] | DeclarativeMeta) -> t.Type[t.Any]:
+    def _make_declarative_base(self, model: type[Model] | sa.orm.DeclarativeMeta) -> type[t.Any]:
         """Create a SQLAlchemy declarative model class. The result is available as
         :attr:`Model`.
 
@@ -442,19 +438,11 @@ class SQLAlchemy:
 
         This method is used for internal setup. Its signature may change at any time.
 
-        :meta private:
-
         :param model: A model base class, or an already created declarative model class.
-
-        .. versionchanged:: 3.0
-            Renamed with a leading underscore, this method is internal.
-
-        .. versionchanged:: 2.3
-            ``model`` can be an already created declarative model class.
         """
-        if not isinstance(model, DeclarativeMeta):
+        if not isinstance(model, sa.orm.DeclarativeMeta):
             metadata = self._make_metadata(None)
-            model = declarative_base(
+            model = sa.orm.declarative_base(
                 metadata=metadata, cls=model, name="Model", metaclass=DefaultMeta
             )
 
@@ -486,27 +474,13 @@ class SQLAlchemy:
 
         :param options: Arguments passed to the engine.
         :param app: The application that the engine configuration belongs to.
-
-        .. versionchanged:: 3.0
-            SQLite paths are relative to ``app.instance_path``. It does not use
-            ``NullPool`` if ``pool_size`` is 0. Driver-level URIs are supported.
-
-        .. versionchanged:: 3.0
-            MySQL sets ``charset="utf8mb4". It does not set ``pool_size`` to 10. It
-            does not set ``pool_recycle`` if not using a queue pool.
-
-        .. versionchanged:: 3.0
-            Renamed from ``apply_driver_hacks``, this method is internal. It does not
-            return anything.
-
-        .. versionchanged:: 2.5
-            Returns ``(sa_url, options)``.
         """
-        url = make_url(options["url"])
+        url = sa.make_url(options["url"])
+        driver = url.drivername
 
-        if url.drivername in {"sqlite", "sqlite+pysqlite"}:
+        if driver.startswith("sqlite"):
             if url.database is None or url.database in {"", ":memory:"}:
-                options["poolclass"] = StaticPool
+                options["poolclass"] = sa.StaticPool
 
                 if "connect_args" not in options:
                     options["connect_args"] = {}
@@ -514,13 +488,13 @@ class SQLAlchemy:
                 options["connect_args"]["check_same_thread"] = False
             else:
                 # the url might look like sqlite:///file:path?uri=true
-                is_uri = url.query.get("uri", False)
+                is_uri = bool(url.query.get("uri", False))
+                mode = url.query.get("mode", "")
 
-                if is_uri:
-                    db_str = url.database[5:]
-                else:
-                    db_str = url.database
+                if is_uri and mode == "memory":
+                    return
 
+                db_str = url.database[5:] if is_uri else url.database
                 if not os.path.isabs(db_str):
                     os.makedirs(app.instance_path, exist_ok=True)
                     db_str = os.path.join(app.instance_path, db_str)
@@ -529,15 +503,17 @@ class SQLAlchemy:
                         db_str = f"file:{db_str}"
 
                     options["url"] = url.set(database=db_str)
-        elif url.drivername.startswith("mysql"):
+        elif driver.startswith("mysql"):
             # set queue defaults only when using queue pool
-            if "pool_class" not in options or options["pool_class"] is QueuePool:
+            if "pool_class" not in options or options["pool_class"] is sa.QueuePool:
                 options.setdefault("pool_recycle", 7200)
 
             if "charset" not in url.query:
                 options["url"] = url.update_query_dict({"charset": "utf8mb4"})
 
-    def _make_engine(self, bind_key: str | None, options: dict[str, t.Any], app: Quart) -> Engine:
+    def _make_engine(
+        self, bind_key: str | None, options: dict[str, t.Any], app: Quart
+    ) -> sa.Engine:
         """Create the :class:`sqlalchemy.engine.Engine` for the given bind key and app.
 
         To customize, use :data:`.SQLALCHEMY_ENGINE_OPTIONS` or
@@ -551,21 +527,38 @@ class SQLAlchemy:
         :param bind_key: The name of the engine being created.
         :param options: Arguments passed to the engine.
         :param app: The application that the engine configuration belongs to.
-
-        .. versionchanged:: 3.0
-            Renamed from ``create_engine``, this method is internal.
         """
-        return engine_from_config(options, prefix="")
+        options = deepcopy(options)
+
+        url = sa.make_url(options["url"])
+        is_async = url.get_dialect().is_async
+        factory = sa.ext.asyncio.async_engine_from_config if is_async else sa.engine_from_config
+        context = EngineContext(
+            bind_key=bind_key,
+            options=options,
+            app=app,
+            factory=factory,
+            url=url,
+            is_async=is_async,
+        )
+
+        signals.before_engine_created.send(self, context=context)
+
+        engine = context.factory(context.options, prefix="")
+
+        signals.after_engine_created.send(self, engine=engine)
+
+        return engine
 
     @property
-    def metadata(self) -> MetaData:
-        """The default metadata used by :attr:`Model` and :attr:`Table` if no bind key
+    def metadata(self) -> sa.MetaData:
+        """The default metadata used by :attr:`Model` and :attr:`sa.Table` if no bind key
         is set.
         """
         return self.metadatas[None]
 
     @property
-    def engines(self) -> t.Mapping[str | None, Engine]:
+    def engines(self) -> t.Mapping[t.Optional[str], sa.Engine]:
         """Map of bind keys to :class:`sqlalchemy.engine.Engine` instances for current
         application. The ``None`` key refers to the default engine, and is available as
         :attr:`engine`.
@@ -574,21 +567,26 @@ class SQLAlchemy:
         passing the ``engine_options`` parameter to the extension.
 
         This requires that a Quart application context is active.
-
-        .. versionadded:: 3.0
         """
-        app = current_app._get_current_object()
+
+        app = self._get_app_context().app
+
+        if app not in self._app_engines:
+            raise RuntimeError(
+                "The current Quart app is not registered with this 'SQLAlchemy'"
+                " instance. Did you forget to call 'init_app', or did you create"
+                " multiple 'SQLAlchemy' instances?"
+            )
         return self._app_engines[app]
 
-    # def get_app(self):
-    #     if hasattr(self, 'app'):
-    #         return self.app
-    #     return current_app._get_current_object()
+    @property
+    def sessions(self) -> dict[str | None, ScopedSessionType]:
+        self._s
 
     @property
-    def engine(self) -> Engine:
+    def engine(self) -> sa.Engine:
         """The default :class:`~sqlalchemy.engine.Engine` for the current application,
-        used by :attr:`session` if the :attr:`Model` or :attr:`Table` being queried does
+        used by :attr:`session` if the :attr:`Model` or :attr:`sa.Table` being queried does
         not set a bind key.
 
         To customize, set the :data:`.SQLALCHEMY_ENGINE_OPTIONS` config, and set
@@ -598,102 +596,81 @@ class SQLAlchemy:
         """
         return self.engines[None]
 
-    def get_or_404(
-        self, entity: t.Type[t.Any], ident: t.Any, *, description: str | None = None
-    ) -> t.Any:
-        """Like :meth:`session.get() <sqlalchemy.orm.Session.get>` but aborts with a
-        ``404 Not Found`` error instead of returning ``None``.
+    def get_bind(self, bind_key: t.Optional[str] = None, app: t.Optional[Quart] = None):
+        app_engines = self._app_engines
+        if not app_engines:
+            raise RuntimeError("No engines created yet, call init_app first")
 
-        :param entity: The model class to query.
-        :param ident: The primary key to query.
-        :param description: A custom message to show on the error page.
+        if app is None:
+            try:
+                app_ctx = self._get_app_context(cache_fallback_enabled=True)
+                app = app_ctx.app
+            except RuntimeError:
+                apps = tuple(app_engines.keys())
+                if len(apps) > 1:
+                    raise RuntimeError("No application context, multiple applications registered")
+                app = apps[0]
+            except:
+                raise RuntimeError("No application context, no application registered")
 
-        .. versionadded:: 3.0
-        """
-        value = self.session.get(entity, ident)
+        engines = app_engines[app]
+        return engines[bind_key]
 
-        if value is None:
-            abort(404, description=description)
+    def bind_context(self, bind_key: t.Optional[str] = None, app: t.Optional[Quart] = None):
+        return BindContext(self, app, bind_key)
 
-        return value
+        # class BindContext(t.NamedTuple):
+        #     bind_key: t.Optional[str]
+        #     is_async: bool
+        #     metadata: sa.MetaData
+        #     connection: sa.engine.Connection | sa.ext.asyncio.AsyncConnection
+        #     session: sa.orm.scoped_session | sa.ext.asyncio.async_scoped_session
 
-    def first_or_404(self, statement: Select, *, description: str | None = None) -> t.Any:
-        """Like :meth:`Result.scalar() <sqlalchemy.engine.Result.scalar>`, but aborts
-        with a ``404 Not Found`` error instead of returning ``None``.
+        #     def close(self):
+        #         self.session.close()
+        #         self.session.remove()
 
-        :param statement: The ``select`` statement to execute.
-        :param description: A custom message to show on the error page.
+        # engine = self.get_bind(bind_key, app=app)
+        # is_async = engine.url.get_dialect().is_async
 
-        .. versionadded:: 3.0
-        """
-        value = self.session.execute(statement).scalar()
+        # with engine.connect() as connection:
+        #     session_options = self._session_options.copy()
+        #     session_options.update(bind=connection)
+        #     session = self._make_scoped_session(session_options, is_async=is_async)
 
-        if value is None:
-            abort(404, description=description)
+        #     bind_context = BindContext(
+        #         bind_key=bind_key,
+        #         is_async=is_async,
+        #         metadata=self.metadatas[bind_key],
+        #         connection=connection,
+        #         session=session,
+        #     )
+        #     # self.metadata.create_all(bind=connection)
+        #     try:
+        #         yield bind_context
+        #     finally:
+        #         bind_context.close()
 
-        return value
-
-    def one_or_404(self, statement: Select, *, description: str | None = None) -> t.Any:
-        """Like :meth:`Result.scalar_one() <sqlalchemy.engine.Result.scalar_one>`,
-        but aborts with a ``404 Not Found`` error instead of raising ``NoResultFound``
-        or ``MultipleResultsFound``.
-
-        :param statement: The ``select`` statement to execute.
-        :param description: A custom message to show on the error page.
-
-        .. versionadded:: 3.0
-        """
+    def _get_app_context(self, cache_fallback_enabled: bool = False):
         try:
-            return self.session.execute(statement).scalar_one()
-        except (NoResultFound, MultipleResultsFound):
-            abort(404, description=description)
+            app_context = app_ctx._get_current_object()
+        except RuntimeError:
+            if self._context_caching_enabled is False and cache_fallback_enabled is False:
+                raise
+            app_context = self._last_app_ctx
+        except:
+            raise
 
-    def paginate(
-        self,
-        select: Select,
-        *,
-        page: int | None = None,
-        per_page: int | None = None,
-        max_per_page: int | None = None,
-        error_out: bool = True,
-        count: bool = True,
-    ) -> Pagination:
-        """Apply an offset and limit to a select statment based on the current page and
-        number of items per page, returning a :class:`.Pagination` object.
+        return app_context
 
-        The statement should select a model class, like ``select(User)``. This applies
-        ``unique()`` and ``scalars()`` modifiers to the result, so compound selects will
-        not return the expected results.
+    def get_session_scope(self, cache_fallback_enabled: bool = False):
+        try:
+            scope = self.session_scopefunc()
+        except:
+            app_ctx = self._get_app_context(cache_fallback_enabled=cache_fallback_enabled)
+            scope = id(app_ctx)
 
-        :param select: The ``select`` statement to paginate.
-        :param page: The current page, used to calculate the offset. Defaults to the
-            ``page`` query arg during a request, or 1 otherwise.
-        :param per_page: The maximum number of items on a page, used to calculate the
-            offset and limit. Defaults to the ``per_page`` query arg during a request,
-            or 20 otherwise.
-        :param max_per_page: The maximum allowed value for ``per_page``, to limit a
-            user-provided value. Use ``None`` for no limit. Defaults to 100.
-        :param error_out: Abort with a ``404 Not Found`` error if no items are returned
-            and ``page`` is not 1, or if ``page`` or ``per_page`` is less than 1, or if
-            either are not ints.
-        :param count: Calculate the total number of values by issuing an extra count
-            query. For very complex queries this may be inaccurate or slow, so it can be
-            disabled and set manually if necessary.
-
-        .. versionchanged:: 3.0
-            The ``count`` query is more efficient.
-
-        .. versionadded:: 3.0
-        """
-        return SelectPagination(
-            select=select,
-            session=self.session(),
-            page=page,
-            per_page=per_page,
-            max_per_page=max_per_page,
-            error_out=error_out,
-            count=count,
-        )
+        return scope
 
     def _call_for_binds(self, bind_key: str | None | list[str | None], op_name: str) -> None:
         """Call a method on each metadata.
@@ -702,9 +679,6 @@ class SQLAlchemy:
 
         :param bind_key: A bind key or list of keys. Defaults to all binds.
         :param op_name: The name of the method to call.
-
-        .. versionchanged:: 3.0
-            Renamed from ``_execute_for_all_tables``.
         """
         if bind_key == "__all__":
             keys: list[str | None] = list(self.metadatas)
@@ -722,10 +696,35 @@ class SQLAlchemy:
                 if key is None:
                     message = f"'SQLALCHEMY_DATABASE_URI' config is not set. {message}"
 
-                raise UnboundExecutionError(message) from None
+                raise sa.exc.UnboundExecutionError(message) from None
+
+            if hasattr(engine, "sync_engine"):
+                engine = engine.sync_engine
 
             metadata = self.metadatas[key]
             getattr(metadata, op_name)(bind=engine)
+
+    async def _async_call_for_binds(
+        self,
+        bind_key: str | None | list[str | None],
+        op_name: str,
+    ) -> None:
+        engine = self.engines[bind_key]
+        async with engine.begin() as conn:
+
+            def sync_wrapper(_, db, bind_key, op_name):
+                return db._call_for_binds(bind_key, op_name)
+
+            await conn.run_sync(sync_wrapper, self, bind_key, op_name)
+
+    async def async_create_all(self, bind_key: str | None | list[str | None] = "__all__") -> None:
+        await self._async_call_for_binds(bind_key, "create_all")
+
+    async def async_drop_all(self, bind_key: str | None | list[str | None] = "__all__") -> None:
+        await self._async_call_for_binds(bind_key, "drop_all")
+
+    async def async_reflect(self, bind_key: str | None | list[str | None] = "__all__") -> None:
+        await self._async_call_for_binds(bind_key, "reflect")
 
     def create_all(self, bind_key: str | None | list[str | None] = "__all__") -> None:
         """Create tables that do not exist in the database by calling
@@ -736,13 +735,6 @@ class SQLAlchemy:
 
         :param bind_key: A bind key or list of keys to create the tables for. Defaults
             to all binds.
-
-        .. versionchanged:: 3.0
-            Renamed the ``bind`` parameter to ``bind_key``. Removed the ``app``
-            parameter.
-
-        .. versionchanged:: 0.12
-            Added the ``bind`` and ``app`` parameters.
         """
         self._call_for_binds(bind_key, "create_all")
 
@@ -753,13 +745,6 @@ class SQLAlchemy:
 
         :param bind_key: A bind key or list of keys to drop the tables from. Defaults to
             all binds.
-
-        .. versionchanged:: 3.0
-            Renamed the ``bind`` parameter to ``bind_key``. Removed the ``app``
-            parameter.
-
-        .. versionchanged:: 0.12
-            Added the ``bind`` and ``app`` parameters.
         """
         self._call_for_binds(bind_key, "drop_all")
 
@@ -771,13 +756,6 @@ class SQLAlchemy:
 
         :param bind_key: A bind key or list of keys to reflect the tables from. Defaults
             to all binds.
-
-        .. versionchanged:: 3.0
-            Renamed the ``bind`` parameter to ``bind_key``. Removed the ``app``
-            parameter.
-
-        .. versionchanged:: 0.12
-            Added the ``bind`` and ``app`` parameters.
         """
         self._call_for_binds(bind_key, "reflect")
 
@@ -797,52 +775,117 @@ class SQLAlchemy:
 
             backref[1].setdefault("query_class", self.Query)
 
-    def relationship(self, *args: t.Any, **kwargs: t.Any) -> RelationshipProperty[t.Any]:
+    def relationship(self, *args: t.Any, **kwargs: t.Any) -> sa.orm.RelationshipProperty[t.Any]:
         """A :func:`sqlalchemy.orm.relationship` that applies this extension's
         :attr:`Query` class for dynamic relationships and backrefs.
-
-        .. versionchanged:: 3.0
-            The :attr:`Query` class is set on ``backref``.
         """
         self._set_rel_query(kwargs)
-        return relationship(*args, **kwargs)
+        return sa.orm.relationship(*args, **kwargs)
 
-    def dynamic_loader(self, argument: t.Any, **kwargs: t.Any) -> RelationshipProperty[t.Any]:
+    def dynamic_loader(
+        self, argument: t.Any, **kwargs: t.Any
+    ) -> sa.orm.RelationshipProperty[t.Any]:
         """A :func:`sqlalchemy.orm.dynamic_loader` that applies this extension's
         :attr:`Query` class for relationships and backrefs.
-
-        .. versionchanged:: 3.0
-            The :attr:`Query` class is set on ``backref``.
         """
         self._set_rel_query(kwargs)
-        return dynamic_loader(argument, **kwargs)
+        return sa.orm.dynamic_loader(argument, **kwargs)
 
-    def _relation(self, *args: t.Any, **kwargs: t.Any) -> RelationshipProperty[t.Any]:
-        """A :func:`sqlalchemy.orm.relationship` that applies this extension's
-        :attr:`Query` class for dynamic relationships and backrefs.
+    # def _relation(self, *args: t.Any, **kwargs: t.Any) -> sa.orm.RelationshipProperty[t.Any]:
+    #     """A :func:`sqlalchemy.orm.relationship` that applies this extension's
+    #     :attr:`Query` class for dynamic relationships and backrefs.
 
-        SQLAlchemy 2.0 removes this name, use ``relationship`` instead.
+    #     SQLAlchemy 2.0 removes this name, use ``relationship`` instead.
 
-        :meta private:
+    #     :meta private:
 
-        .. versionchanged:: 3.0
-            The :attr:`Query` class is set on ``backref``.
-        """
-        self._set_rel_query(kwargs)
-        return relationship(*args, **kwargs)
+    #     .. versionchanged:: 3.0
+    #         The :attr:`Query` class is set on ``backref``.
+    #     """
+    #     self._set_rel_query(kwargs)
+    #     return sa.orm.relationship(*args, **kwargs)
+
+    # relation = _relation
 
     def __getattr__(self, name: str) -> t.Any:
-        if name == "relation":
-            return self._relation
-
-        if name == "event":
-            return event
-
         if name.startswith("_"):
             raise AttributeError(name)
 
-        for mod in (sqlalchemy, sqlalchemy.orm):
+        for mod in (sa, sa.orm):
             if hasattr(mod, name):
                 return getattr(mod, name)
 
         raise AttributeError(name)
+
+    def __repr__(self) -> str:
+        if not has_app_context():
+            return f"<{type(self).__name__}>"
+
+        message = f"{type(self).__name__} {self.engine.url}"
+
+        if len(self.engines) > 1:
+            message = f"{message} +{len(self.engines) - 1}"
+
+        return f"<{message}>"
+
+
+@dataclass
+class BindContext:
+    db: InitVar[SQLAlchemy]
+    app: InitVar[t.Optional[Quart]]
+    bind_key: t.Optional[str]
+    is_async: bool = field(init=False)
+    engine: sa.Engine | sa.ext.asyncio.AsyncEngine = field(init=False)
+    metadata: sa.MetaData = field(init=False, repr=False)
+    connection: sa.Connection | sa.ext.asyncio.AsyncConnection = field(init=False, repr=False)
+    session: sa.orm.scoped_session | sa.ext.asyncio.async_scoped_session = field(
+        init=False, repr=False
+    )
+
+    def __post_init__(self, db: SQLAlchemy, app: t.Optional[Quart]):
+        self.engine = db.get_bind(self.bind_key, app=app)
+        self.is_async = self.engine.url.get_dialect().is_async
+        self.metadata = db.metadatas[self.bind_key]
+        session_options = db._session_options.copy()
+        self.session = db._make_scoped_session(session_options, is_async=self.is_async)
+
+    def __enter__(self):
+        self.engine = t.cast(sa.Engine, self.engine)
+        self.session = t.cast(sa.orm.scoped_session, self.session)
+
+        self.connection = self.engine.connect()
+        self.session.configure(bind=self.connection)
+        return self
+
+    def __exit__(self, _, exc_val, __):
+        if exc_val is not None:
+            self.session.rollback()
+
+        self.session.close()
+        self.connection.close()
+        self.session.remove()
+
+        if exc_val is not None:
+            raise exc_val
+
+    async def __aenter__(self):
+        self.engine = t.cast(sa.ext.asyncio.AsyncEngine, self.engine)
+        self.session = t.cast(sa.ext.asyncio.async_scoped_session, self.session)
+
+        self.connection = await self.engine.connect()
+        self.session.configure(bind=self.connection)
+        return self
+
+    async def __aexit__(self, _, exc_val, __):
+        self.engine = t.cast(sa.ext.asyncio.AsyncEngine, self.engine)
+        self.session = t.cast(sa.ext.asyncio.async_scoped_session, self.session)
+
+        if exc_val is not None:
+            await self.session.rollback()
+
+        await self.session.close()
+        await self.connection.close()  # type: ignore
+        await self.session.remove()
+
+        if exc_val is not None:
+            raise exc_val

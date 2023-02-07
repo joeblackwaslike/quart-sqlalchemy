@@ -4,11 +4,14 @@ import inspect
 import typing as t
 
 import pytest
-import sqlalchemy as sa
+import sqlalchemy
 import sqlalchemy.orm
 
 from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.model import camel_to_snake_case
+
+
+sa = sqlalchemy
 
 
 @pytest.mark.parametrize(
@@ -209,7 +212,7 @@ def test_no_access_to_class_property(db: SQLAlchemy) -> None:
         def __init__(self, f: t.Callable[..., t.Any]) -> None:
             self.f = f
 
-        def __get__(self, instance: t.Any, owner: t.Type[t.Any]) -> t.Any:
+        def __get__(self, instance: t.Any, owner: type[t.Any]) -> t.Any:
             return self.f(owner)
 
     class Duck(db.Model):

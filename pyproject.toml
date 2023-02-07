@@ -7,7 +7,7 @@ authors = [
 ]
 dependencies = [
     "quart~=0.18.3",
-    "SQLAlchemy>=1.4.35, <2.1.0",
+    "SQLAlchemy[asyncio]>=1.4.35, <2.1.0",
     "anyio~=3.3.4",
 ]
 requires-python = ">=3.7"
@@ -41,7 +41,7 @@ dev = [
     "tox",
     "tox-pdm",
     "mypy",
-    "sqlalchemy[mypy]",
+    "sqlalchemy",
 ]
 docs = [
     "sphinx",
@@ -68,6 +68,8 @@ excludes = [
 testpaths = ["tests"]
 filterwarnings = ["error"]
 asyncio_mode = "auto"
+log_cli = true
+addopts = "-s"
 
 [tool.coverage.run]
 branch = true

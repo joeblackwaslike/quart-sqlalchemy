@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import pytest
-import sqlalchemy as sa
+import sqlalchemy
+import sqlalchemy.exc
 import sqlalchemy.orm
 from quart import Quart
 
 from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.model import DefaultMeta
 from quart_sqlalchemy.model import Model
+
+
+sa = sqlalchemy
 
 
 def test_default_metadata(db: SQLAlchemy) -> None:
@@ -26,7 +30,7 @@ def test_custom_metadata() -> None:
 
 def test_metadata_from_custom_model() -> None:
     base = sa.orm.declarative_base(cls=Model, metaclass=DefaultMeta)
-    metadata = base.metadata  # type: ignore[attr-defined]
+    metadata = base.metadata
     db = SQLAlchemy(model_class=base)
     assert db.Model.metadata is metadata
     assert db.Model.metadata is db.metadata
@@ -49,9 +53,7 @@ def test_metadata_per_bind(app: Quart) -> None:
 
 def test_copy_naming_convention(app: Quart) -> None:
     app.config["SQLALCHEMY_BINDS"] = {"a": "sqlite://"}
-    db = SQLAlchemy(
-        app, metadata=sa.MetaData(naming_convention={"pk": "spk_%(table_name)s"})
-    )
+    db = SQLAlchemy(app, metadata=sa.MetaData(naming_convention={"pk": "spk_%(table_name)s"}))
     assert db.metadata.naming_convention["pk"] == "spk_%(table_name)s"
     assert db.metadatas["a"].naming_convention == db.metadata.naming_convention
 
@@ -106,7 +108,6 @@ async def test_create_key_spec(app: Quart, bind_key: str | list[str | None]) -> 
             db.session.execute(sa.select(User)).scalars()
 
 
-
 async def test_reflect(app: Quart) -> None:
     async with app.app_context():
         app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///user.db"
@@ -116,6 +117,7 @@ async def test_reflect(app: Quart) -> None:
         db.Table("post", sa.Column("id", sa.Integer, primary_key=True), bind_key="post")
         db.create_all()
 
+        del app.extensions["sqlalchemy"]
         db = SQLAlchemy(app)
         assert not db.metadata.tables
         db.reflect()

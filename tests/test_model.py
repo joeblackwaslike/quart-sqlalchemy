@@ -3,13 +3,16 @@ from __future__ import annotations
 import typing as t
 
 import pytest
-import sqlalchemy as sa
+import sqlalchemy
 import sqlalchemy.orm
 from quart import Quart
 
 from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.model import DefaultMeta
 from quart_sqlalchemy.model import Model
+
+
+sa = sqlalchemy
 
 
 def test_default_model_class(db: SQLAlchemy) -> None:

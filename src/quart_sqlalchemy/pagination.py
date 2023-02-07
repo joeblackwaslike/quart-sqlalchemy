@@ -3,10 +3,13 @@ from __future__ import annotations
 import typing as t
 from math import ceil
 
-import sqlalchemy as sa
+import sqlalchemy
 import sqlalchemy.orm
 from quart import abort
 from quart import request
+
+
+sa = sqlalchemy
 
 
 class Pagination:
@@ -45,12 +48,12 @@ class Pagination:
 
     def __init__(
         self,
-        page: int | None = None,
-        per_page: int | None = None,
-        max_per_page: int | None = 100,
+        page: t.Optional[int] = None,
+        per_page: t.Optional[int] = None,
+        max_per_page: t.Optional[int] = 100,
         error_out: bool = True,
         count: bool = True,
-        **kwargs: t.Any,
+        **kwargs,
     ) -> None:
         self._query_args = kwargs
         page, per_page = self._prepare_page_args(
@@ -60,36 +63,37 @@ class Pagination:
             error_out=error_out,
         )
 
-        self.page: int = page
+        self.page = page
         """The current page."""
 
-        self.per_page: int = per_page
+        self.per_page = per_page
         """The maximum number of items on a page."""
 
-        items = self._query_items()
+        self.max_per_page = max_per_page
+        self.error_out = error_out
+        self.count = count
 
-        if not items and page != 1 and error_out:
-            abort(404)
-
-        self.items: list[t.Any] = items
+    def get_items(self):
+        self.items = self._query_items()
         """The items on the current page. Iterating over the pagination object is
         equivalent to iterating over the items.
         """
+        if not self.items and self.page != 1 and self.error_out:
+            abort(404)
 
-        if count:
-            total = self._query_count()
+        if self.count:
+            self.total = self._query_count()
         else:
-            total = None
-
-        self.total: int | None = total
+            self.total = None
         """The total number of items across all pages."""
+        return self
 
     @staticmethod
     def _prepare_page_args(
         *,
-        page: int | None = None,
-        per_page: int | None = None,
-        max_per_page: int | None = None,
+        page: t.Optional[int] = None,
+        per_page: t.Optional[int] = None,
+        max_per_page: t.Optional[int] = None,
         error_out: bool = True,
     ) -> tuple[int, int]:
         if request:
@@ -202,7 +206,7 @@ class Pagination:
         return self.page > 1
 
     @property
-    def prev_num(self) -> int | None:
+    def prev_num(self) -> t.Optional[int]:
         """The previous page number, or ``None`` if this is the first page."""
         if not self.has_prev:
             return None
@@ -232,7 +236,7 @@ class Pagination:
         return self.page < self.pages
 
     @property
-    def next_num(self) -> int | None:
+    def next_num(self) -> t.Optional[int]:
         """The next page number, or ``None`` if this is the last page."""
         if not self.has_next:
             return None
@@ -263,7 +267,7 @@ class Pagination:
         left_current: int = 2,
         right_current: int = 4,
         right_edge: int = 2,
-    ) -> t.Iterator[int | None]:
+    ) -> t.Iterator[t.Optional[int]]:
         """Yield page numbers for a pagination widget. Skipped pages between the edges
         and middle are represented by a ``None``.
 
@@ -328,18 +332,30 @@ class SelectPagination(Pagination):
     .. versionadded:: 3.0
     """
 
+    def _select_for_query_items(self):
+        select = self._safe_get_required_query_arg("select")
+        return select.limit(self.per_page).offset(self._query_offset)
+
     def _query_items(self) -> list[t.Any]:
-        select = self._query_args["select"]
-        select = select.limit(self.per_page).offset(self._query_offset)
-        session = self._query_args["session"]
+        select = self._select_for_query_items()
+        session = self._safe_get_required_query_arg("session")
         return list(session.execute(select).unique().scalars())
 
-    def _query_count(self) -> int:
-        select = self._query_args["select"]
+    def _select_for_query_count(self):
+        select = self._safe_get_required_query_arg("select")
         sub = select.options(sa.orm.lazyload("*")).order_by(None).subquery()
-        session = self._query_args["session"]
-        out = session.execute(sa.select(sa.func.count()).select_from(sub)).scalar()
-        return out  # type: ignore[no-any-return]
+        return sa.select(sa.func.count()).select_from(sub)
+
+    def _query_count(self) -> int:
+        select = self._select_for_query_count()
+        session = self._safe_get_required_query_arg("session")
+        return session.execute(select).scalar()
+
+    def _safe_get_required_query_arg(self, name):
+        try:
+            return self._query_args[name]
+        except KeyError:
+            raise RuntimeError(f"SelectPagination missing required `{name}` keyword argument.")
 
 
 class QueryPagination(Pagination):
@@ -358,3 +374,36 @@ class QueryPagination(Pagination):
         # Query.count automatically disables eager loads
         out = self._query_args["query"].order_by(None).count()
         return out  # type: ignore[no-any-return]
+
+
+class AsyncSelectPagination(SelectPagination):
+    """Returned by :meth:`.SQLAlchemy.paginate`. Takes ``select`` and ``session``
+    arguments in addition to the :class:`Pagination` arguments.
+
+    .. versionadded:: 3.0
+    """
+
+    async def get_items(self):
+        self.items = await self._query_items()
+        """The items on the current page. Iterating over the pagination object is
+        equivalent to iterating over the items.
+        """
+        if not self.items and self.page != 1 and self.error_out:
+            abort(404)
+
+        if self.count:
+            self.total = await self._query_count()
+        else:
+            self.total = None
+        """The total number of items across all pages."""
+        return self
+
+    async def _query_items(self) -> list[t.Any]:
+        select = self._select_for_query_items()
+        session = self._safe_get_required_query_arg("session")
+        return list((await session.execute(select)).unique().scalars())
+
+    async def _query_count(self) -> int:
+        select = self._select_for_query_count()
+        session = self._safe_get_required_query_arg("session")
+        return (await session.execute(select)).scalar()

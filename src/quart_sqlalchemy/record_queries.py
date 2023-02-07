@@ -5,11 +5,14 @@ import inspect
 import typing as t
 from time import perf_counter
 
-import sqlalchemy as sa
+import sqlalchemy
 import sqlalchemy.event
 from quart import current_app
 from quart import g
 from quart import has_app_context
+
+
+sa = sqlalchemy
 
 
 def get_recorded_queries() -> list[_QueryInfo]:
@@ -60,7 +63,7 @@ class _QueryInfo:
         ``context`` is renamed to ``location``.
     """
 
-    statement: str | None
+    statement: t.Optional[str]
     parameters: t.Any
     start_time: float
     end_time: float
@@ -71,19 +74,19 @@ class _QueryInfo:
         return self.end_time - self.start_time
 
 
-def _listen(engine: sa.engine.Engine) -> None:
+def _listen(engine: sa.Engine) -> None:
     sa.event.listen(engine, "before_cursor_execute", _record_start, named=True)
     sa.event.listen(engine, "after_cursor_execute", _record_end, named=True)
 
 
-def _record_start(context: sa.engine.ExecutionContext, **kwargs: t.Any) -> None:
+def _record_start(context: sa.ExecutionContext, **kwargs) -> None:
     if not has_app_context():
         return
 
     context._fsa_start_time = perf_counter()  # type: ignore[attr-defined]
 
 
-def _record_end(context: sa.engine.ExecutionContext, **kwargs: t.Any) -> None:
+def _record_end(context: sa.ExecutionContext, **kwargs) -> None:
     if not has_app_context():
         return
 

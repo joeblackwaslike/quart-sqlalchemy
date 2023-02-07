@@ -1,6 +1,6 @@
+import asyncio
 from datetime import datetime
 from datetime import timezone
-import asyncio
 
 from quart import flash
 from quart import Quart
@@ -8,13 +8,20 @@ from quart import redirect
 from quart import render_template
 from quart import request
 from quart import url_for
+
 from quart_sqlalchemy import SQLAlchemy
+
 
 app = Quart(__name__)
 app.secret_key = "Achee6phIexoh8dagiQuew0ephuga4Ih"
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///todo.sqlite"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db = SQLAlchemy(app, engine_options=dict(check_same_thread=False))
+db = SQLAlchemy(
+    app,
+    engine_options=dict(
+        connect_args=dict(check_same_thread=False),
+    ),
+)
 
 
 def now_utc():
@@ -33,9 +40,7 @@ class Todo(db.Model):
 async def show_all():
     select = db.select(Todo).order_by(Todo.pub_date.desc())
     todos = db.session.execute(select).all()
-    # import pdb; pdb.set_trace()
-    return dict(status='ok', todos=len(todos))
-    # return await render_template("show_all.html", todos=todos)
+    return await render_template("show_all.html", todos=todos)
 
 
 @app.route("/new", methods=["GET", "POST"])

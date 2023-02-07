@@ -2,13 +2,36 @@ from __future__ import annotations
 
 import asyncio
 import typing as t
-from pathlib import Path
+from copy import deepcopy
 
 import pytest
-import sqlalchemy as sa
+import sqlalchemy
+import sqlalchemy.orm
 from quart import Quart
 
 from quart_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy.model import Model
+from tests import constants
+
+
+sa = sqlalchemy
+
+Base = sa.orm.declarative_base()
+
+
+# class Base(Model):
+#     pass
+
+
+# class Todo(Model):
+#     # __tablename__ = "todo"
+#     id = sa.Column(sa.Integer, primary_key=True)
+#     title = sa.Column(sa.String)
+
+
+@pytest.fixture(name="app_config", scope="module")
+def _app_config_fixture():
+    return deepcopy(constants.simple_config)
 
 
 @pytest.fixture(scope="module")
@@ -20,21 +43,21 @@ def event_loop():
 
 
 @pytest.fixture
-def app(request: pytest.FixtureRequest, tmp_path: Path) -> Quart:
-    app = Quart(request.module.__name__, instance_path=str(tmp_path / "instance"))
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite://"
-    app.config["SQLALCHEMY_RECORD_QUERIES"] = False
+def app(request: pytest.FixtureRequest, app_config) -> Quart:
+    app = Quart(request.module.__name__)
+    app.config.from_mapping(app_config)
     return app
 
 
 @pytest.fixture
-async def db(app: Quart) -> SQLAlchemy:
+async def db(app: Quart) -> t.AsyncGenerator[SQLAlchemy, None]:
     yield SQLAlchemy(app)
 
 
-@pytest.fixture
-async def Todo(app: Quart, db: SQLAlchemy) -> t.Any:
+@pytest.fixture(name="Todo")
+async def _todo_fixture(app: Quart, db: SQLAlchemy) -> t.AsyncGenerator[Model, None]:
     class Todo(db.Model):
+        # __tablename__ = "todo"
         id = sa.Column(sa.Integer, primary_key=True)
         title = sa.Column(sa.String)
 

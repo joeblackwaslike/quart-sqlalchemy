@@ -8,9 +8,9 @@ from quart import render_template
 from quart import request
 from quart import session
 from quart import url_for
-
 from quartr import db
 from quartr.auth.models import User
+
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -29,58 +29,60 @@ def login_required(view):
 
 
 @bp.before_app_request
-def load_logged_in_user():
+async def load_logged_in_user():
     """If a user id is stored in the session, load the user object from
     the database into ``g.user``."""
     user_id = session.get("user_id")
 
     if user_id is not None:
-        g.user = db.session.get(User, user_id)
+        g.user = await db.session.get(User, user_id)
     else:
         g.user = None
 
 
 @bp.route("/register", methods=("GET", "POST"))
-def register():
+async def register():
     """Register a new user.
 
     Validates that the username is not already taken. Hashes the
     password for security.
     """
     if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
+        username = (await request.form)["username"]
+        password = (await request.form)["password"]
         error = None
 
         if not username:
             error = "Username is required."
         elif not password:
             error = "Password is required."
-        elif db.session.execute(
-            db.select(db.select(User).filter_by(username=username).exists())
+        elif (
+            await db.session.execute(
+                db.select(db.select(User).filter_by(username=username).exists())
+            )
         ).scalar():
             error = f"User {username} is already registered."
 
         if error is None:
             # the name is available, create the user and go to the login page
             db.session.add(User(username=username, password=password))
-            db.session.commit()
+            await db.session.commit()
             return redirect(url_for("auth.login"))
 
-        flash(error)
+        await flash(error)
 
-    return render_template("auth/register.html")
+    return await render_template("auth/register.html")
 
 
 @bp.route("/login", methods=("GET", "POST"))
-def login():
+async def login():
     """Log in a registered user by adding the user id to the session."""
     if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
+        username = (await request.form)["username"]
+        password = (await request.form)["password"]
         error = None
         select = db.select(User).filter_by(username=username)
-        user = db.session.execute(select).scalar()
+        user = (await db.session.execute(select)).scalar()
 
         if user is None:
             error = "Incorrect username."
@@ -93,9 +95,9 @@ def login():
             session["user_id"] = user.id
             return redirect(url_for("index"))
 
-        flash(error)
+        await flash(error)
 
-    return render_template("auth/login.html")
+    return await render_template("auth/login.html")
 
 
 @bp.route("/logout")

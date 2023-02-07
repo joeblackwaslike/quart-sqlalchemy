@@ -4,10 +4,14 @@ import os.path
 import unittest.mock
 
 import pytest
-import sqlalchemy as sa
+import sqlalchemy
+import sqlalchemy.orm
 from quart import Quart
 
 from quart_sqlalchemy import SQLAlchemy
+
+
+sa = sqlalchemy
 
 
 async def test_default_engine(app: Quart, db: SQLAlchemy) -> None:

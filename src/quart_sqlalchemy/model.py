@@ -3,10 +3,14 @@ from __future__ import annotations
 import re
 import typing as t
 
-import sqlalchemy as sa
+import sqlalchemy
+import sqlalchemy.event
 import sqlalchemy.orm
 
 from .query import Query
+
+
+sa = sqlalchemy
 
 if t.TYPE_CHECKING:
     from .extension import SQLAlchemy
@@ -18,10 +22,16 @@ class _QueryProperty:
     :meta private:
     """
 
+    @t.overload
+    def __get__(self, obj: None, cls: type[Model]) -> Query:
+        ...
+
+    @t.overload
+    def __get__(self, obj: Model, cls: type[Model]) -> Query:
+        ...
+
     def __get__(self, obj: Model | None, cls: t.Type[Model]) -> Query:
-        return cls.query_class(
-            cls, session=cls.__fsa__.session()  # type: ignore[arg-type]
-        )
+        return cls.query_class(cls, session=cls.__fsa__.session())  # type: ignore[arg-type]
 
 
 class Model:
@@ -39,7 +49,7 @@ class Model:
     :meta private:
     """
 
-    query_class: t.ClassVar[t.Type[Query]] = Query
+    query_class: t.ClassVar[type[Query]] = Query
     """Query class used by :attr:`query`. Defaults to :attr:`.SQLAlchemy.Query`, which
     defaults to :class:`.Query`.
     """
@@ -55,6 +65,7 @@ class Model:
 
     def __repr__(self) -> str:
         state = sa.inspect(self)
+        assert state is not None
 
         if state.transient:
             pk = f"(transient {id(self)})"
@@ -77,9 +88,7 @@ class BindMetaMixin(type):
     __fsa__: SQLAlchemy
     metadata: sa.MetaData
 
-    def __init__(
-        cls, name: str, bases: tuple[type, ...], d: dict[str, t.Any], **kwargs: t.Any
-    ) -> None:
+    def __init__(cls, name: str, bases: tuple[type, ...], d: dict[str, t.Any], **kwargs) -> None:
         if not ("metadata" in cls.__dict__ or "__table__" in cls.__dict__):
             bind_key = getattr(cls, "__bind_key__", None)
             parent_metadata = getattr(cls, "metadata", None)
@@ -102,9 +111,7 @@ class NameMetaMixin(type):
     __tablename__: str
     __table__: sa.Table
 
-    def __init__(
-        cls, name: str, bases: tuple[type, ...], d: dict[str, t.Any], **kwargs: t.Any
-    ) -> None:
+    def __init__(cls, name: str, bases: tuple[type, ...], d: dict[str, t.Any], **kwargs) -> None:
         if should_set_tablename(cls):
             cls.__tablename__ = camel_to_snake_case(cls.__name__)
 
@@ -118,7 +125,7 @@ class NameMetaMixin(type):
         ):
             del cls.__table__
 
-    def __table_cls__(cls, *args: t.Any, **kwargs: t.Any) -> sa.Table | None:
+    def __table_cls__(cls, *args, **kwargs) -> t.Optional[sa.Table]:
         """This is called by SQLAlchemy during mapper setup. It determines the final
         table object that the model will use.
 

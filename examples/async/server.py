@@ -10,13 +10,12 @@ from quart_sqlalchemy import SQLAlchemy
 
 def create_app():
     app = Quart(__name__)
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite+aiosqlite:///:memory:"
-    app.config["SQLALCHEMY_ENGINE_ASYNC"] = True
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite+aiosqlite://"
     return app
 
 
 app = create_app()
-db = SQLAlchemy(app)
+db = SQLAlchemy(app, async_session=True)
 
 
 class A(db.Model):
@@ -36,40 +35,36 @@ class B(db.Model):
 
 
 async def async_main():
-    import pdb
-
-    pdb.set_trace()
     async with app.app_context():
         async with db.engine.begin() as conn:
-            await conn.run_sync(db.metadata.drop_all)
-            await conn.run_sync(db.metadata.create_all)
+            print(db.metadatas)
+            # await db.async_drop_all()
+            # await db.async_create_all()
+
+            await conn.run_sync(db.metadatas[None].drop_all)
+            await conn.run_sync(db.metadatas[None].create_all)
 
         # async with db.engine.begin() as conn:
         async with db.session() as session:
             async with session.begin():
-                session.add(A(bs=[B(), B()], data="a1"))
-                # session.add_all(
-                #     [
-                #         A(bs=[B(), B()], data="a1"),
-                #         A(bs=[B()], data="a2"),
-                #         A(bs=[B(), B()], data="a3"),
-                #     ]
-                # )
-                await session.commit()
-                # await session.commit()
 
-    # async with app.app_context():
-    #         stmt = select(A).options(selectinload(A.bs))
+                session.add_all(
+                    [
+                        A(bs=[B(), B()], data="a1"),
+                        A(bs=[B()], data="a2"),
+                        A(bs=[B(), B()], data="a3"),
+                    ]
+                )
+                await session.flush()
 
-    #         result = await session.execute(stmt)
+                stmt = select(A).options(selectinload(A.bs))
 
-    #         for a1 in result.scalars():
-    #             print(a1)
-    #             print(f"created at: {a1.create_date}")
-    #             for b1 in a1.bs:
-    #                 print(b1)
-
-    # await db.engine.dispose()
+                results = await session.execute(stmt)
+                for a in results.scalars():
+                    print(a)
+                    print(f"created at: {a.create_date}")
+                    for b in a.bs:
+                        print(b)
 
 
 asyncio.run(async_main())

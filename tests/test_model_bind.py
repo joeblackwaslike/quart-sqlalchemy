@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import sqlalchemy as sa
+import sqlalchemy
 
 from quart_sqlalchemy import SQLAlchemy
+
+
+sa = sqlalchemy
 
 
 def test_bind_key_default(db: SQLAlchemy) -> None:
