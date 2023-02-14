@@ -6,6 +6,7 @@ import typing as t
 import pytest
 import sqlalchemy
 import sqlalchemy.orm
+from sqlalchemy.orm import Mapped
 
 from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.model import camel_to_snake_case
@@ -52,14 +53,14 @@ def test_camel_to_snake_case(name: str, expect: str) -> None:
 
 def test_name(db: SQLAlchemy) -> None:
     class FOOBar(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class BazBar(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class Ham(db.Model):
         __tablename__ = "spam"
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     assert FOOBar.__tablename__ == "foo_bar"
     assert BazBar.__tablename__ == "baz_bar"
@@ -70,7 +71,7 @@ def test_single_name(db: SQLAlchemy) -> None:
     """Single table inheritance should not set a new name."""
 
     class Duck(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class Mallard(Duck):
         pass
@@ -83,7 +84,7 @@ def test_joined_name(db: SQLAlchemy) -> None:
     """Model has a separate primary key; it should set a new name."""
 
     class Duck(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class Donald(Duck):
         id = sa.Column(sa.Integer, sa.ForeignKey(Duck.id), primary_key=True)
@@ -97,7 +98,7 @@ def test_mixin_id(db: SQLAlchemy) -> None:
     """
 
     class Base:
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class Duck(Base, db.Model):
         pass
@@ -117,7 +118,7 @@ def test_mixin_attr(db: SQLAlchemy) -> None:
             return cls.__name__.upper()  # type: ignore[attr-defined,no-any-return]
 
     class Bird(Mixin, db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class Duck(Bird):
         # object reference
@@ -137,7 +138,7 @@ def test_abstract_name(db: SQLAlchemy) -> None:
 
     class Base(db.Model):
         __abstract__ = True
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class Duck(Base):
         pass
@@ -152,7 +153,7 @@ def test_complex_inheritance(db: SQLAlchemy) -> None:
     """
 
     class Duck(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class IdMixin:
         @sa.orm.declared_attr
@@ -172,7 +173,7 @@ def test_manual_name(db: SQLAlchemy) -> None:
 
     class Duck(db.Model):
         __tablename__ = "DUCK"
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
         type = sa.Column(sa.String)
 
         __mapper_args__ = {"polymorphic_on": type}
@@ -216,7 +217,7 @@ def test_no_access_to_class_property(db: SQLAlchemy) -> None:
             return self.f(owner)
 
     class Duck(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class ns:
         is_duck = False
@@ -259,7 +260,7 @@ def test_correct_error_for_no_primary_key(db: SQLAlchemy) -> None:
 
 def test_single_has_parent_table(db: SQLAlchemy) -> None:
     class Duck(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class Call(Duck):
         pass

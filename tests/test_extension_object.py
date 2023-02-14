@@ -6,6 +6,7 @@ import pytest
 import sqlalchemy
 import sqlalchemy.orm
 from quart import Quart
+from sqlalchemy.orm import Mapped
 from werkzeug.exceptions import NotFound
 
 from quart_sqlalchemy import SQLAlchemy
@@ -32,12 +33,12 @@ async def test_get_or_404_kwargs(app: Quart) -> None:
     db = SQLAlchemy(app)
 
     class User(db.Model):
-        id = sa.Column(db.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class Todo(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
-        user_id = sa.Column(sa.ForeignKey(User.id))
-        user = db.relationship(User)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
+        user_id: Mapped[int] = sa.orm.mapped_column(sa.ForeignKey(User.id))
+        user = sa.orm.relationship(User)
 
     async with app.app_context():
         db.create_all()

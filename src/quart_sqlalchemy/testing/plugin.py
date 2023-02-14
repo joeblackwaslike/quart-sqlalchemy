@@ -21,47 +21,6 @@ from quart_sqlalchemy import SQLAlchemy
 sa = sqlalchemy
 
 
-simple_config = {
-    "SQLALCHEMY_DATABASE_URI": "sqlite:///file:simple.db?mode=memory&cache=shared&uri=true",
-    "SQLALCHEMY_ECHO": False,
-    "SQLALCHEMY_ENGINE_OPTIONS": dict(
-        connect_args=dict(
-            check_same_thread=True,
-        ),
-    ),
-}
-
-async_config = {
-    "SQLALCHEMY_DATABASE_URI": "sqlite+aiosqlite:///file:mem.db?mode=memory&cache=shared&uri=true",
-    "SQLALCHEMY_ECHO": False,
-    "SQLALCHEMY_ENGINE_OPTIONS": dict(
-        connect_args=dict(
-            check_same_thread=True,
-        ),
-    ),
-}
-
-complex_config = {
-    "SQLALCHEMY_BINDS": {
-        None: dict(
-            url="sqlite:///file:complex.db?mode=memory&cache=shared&uri=true",
-            connect_args=dict(check_same_thread=False),
-        ),
-        "read-replica": dict(
-            url="sqlite:///file:complex.db?mode=memory&cache=shared&uri=true",
-            connect_args=dict(check_same_thread=False),
-        ),
-        "async": dict(
-            url="sqlite+aiosqlite:///file:complex.db?mode=memory&cache=shared&uri=true",
-            connect_args=dict(check_same_thread=False),
-        ),
-    },
-    "SQLALCHEMY_ECHO": False,
-}
-
-configs = [simple_config, async_config, complex_config]
-
-
 @contextmanager
 def sync_app_context(app):
     ctx = AppContext(app)
@@ -71,53 +30,6 @@ def sync_app_context(app):
         yield ctx
     finally:
         _cv_app.reset(reset_token)
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
-
-
-# @pytest.fixture(name="simple_config")
-# def _simple_config():
-#     return deepcopy(simple_config)
-
-
-@pytest.fixture(name="async_config", scope="session")
-def _async_config():
-    return deepcopy(async_config)
-
-
-@pytest.fixture(name="app_config", scope="session")
-def _app_config():
-    return deepcopy(simple_config)
-
-
-@pytest.fixture(name="app", scope="session")
-def _app(app_config):
-    app = Quart(__name__)
-    app.config.from_mapping(app_config)
-    return app
-
-
-@pytest.fixture(name="async_app", scope="session")
-def _async_app(async_config):
-    app = Quart(__name__)
-    app.config.from_mapping(async_config)
-    return app
-
-
-@pytest.fixture(name="db", scope="session")
-def _db(app: Quart) -> SQLAlchemy:
-    return SQLAlchemy(app)
-
-
-@pytest.fixture(name="async_db", scope="session")
-def _async_db(async_app: Quart) -> SQLAlchemy:
-    return SQLAlchemy(async_app)
 
 
 @contextmanager
@@ -149,10 +61,7 @@ def ephemeral_session(
                     transaction.rollback()
         assert connection.exec_driver_sql("select count(*) from todo").scalar() == 0
 
-    # Session.remove()
-
-
-# sa.ext.asyncio.async_scoped_session
+    Session.remove()
 
 
 @asynccontextmanager
@@ -184,7 +93,7 @@ async def async_ephemeral_session(
             await transaction.rollback()
         assert (await connection.exec_driver_sql("select count(*) from todo")).scalar() == 0
 
-    # await Session.remove()
+    await Session.remove()
 
 
 def create_todo_model(db):
@@ -193,16 +102,6 @@ def create_todo_model(db):
         name = sa.Column(sa.String(50), default="default")
 
     return Todo
-
-
-@pytest.fixture(name="Todo")
-def _todo_model(db: SQLAlchemy) -> t.Type[sa.orm.DeclarativeMeta]:
-    return create_todo_model(db)
-
-
-@pytest.fixture(name="AsyncTodo")
-def _async_todo_model(async_db: SQLAlchemy) -> t.Type[sa.orm.DeclarativeMeta]:
-    return create_todo_model(async_db)
 
 
 @pytest.fixture(name="app_context")

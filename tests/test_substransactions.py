@@ -3,6 +3,8 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
+import sqlalchemy
+import sqlalchemy.orm
 from quart import Quart
 from quart.ctx import AppContext
 from quart.globals import _cv_app
@@ -13,11 +15,15 @@ from sqlalchemy import Integer
 from sqlalchemy import select
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import scoped_session
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import sessionmaker
 
 from quart_sqlalchemy import SQLAlchemy
+
+
+sa = sqlalchemy
 
 
 @contextmanager
@@ -77,12 +83,12 @@ database.init_app(app)
 
 class Foo(database.Model):
     __tablename__ = "foo"
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
 
 class Bar(database.Model):
     __tablename__ = "bar"
-    id = Column(Integer, primary_key=True)
+    id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
 
 @contextmanager

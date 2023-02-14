@@ -210,3 +210,14 @@ class DefaultMeta(BindMetaMixin, NameMetaMixin, sa.orm.DeclarativeMeta):
     """SQLAlchemy declarative metaclass that provides ``__bind_key__`` and
     ``__tablename__`` support.
     """
+
+
+class TableNameMixin:
+    @sa.orm.declared_attr.directive
+    def __tablename__(cls) -> str:
+        return camel_to_snake_case(cls.__name__)
+
+
+# registry: sa.orm.registry = sa.orm.registry()
+class Base(TableNameMixin, Model, sa.orm.DeclarativeBaseNoMeta):
+    pass

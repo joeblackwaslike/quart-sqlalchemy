@@ -31,7 +31,8 @@ build-backend = "setuptools.build_meta"
 [tool.pdm.dev-dependencies]
 tests = [
     "pytest~=7.2.1",
-    "pytest-asyncio~=0.20.3",
+    # "pytest-asyncio~=0.20.3",
+    "pytest-asyncio @ https://github.com/joeblackwaslike/pytest-asyncio/releases/download/v0.20.4.dev42/pytest_asyncio-0.20.4.dev42-py3-none-any.whl",
     "pytest-mock~=3.10.0",
     "pytest-cov",
     "coverage[toml]",
@@ -65,11 +66,13 @@ excludes = [
 ]
 
 [tool.pytest.ini_options]
+addopts = "-rsx --tb=short --loop-scope class"
 testpaths = ["tests"]
 filterwarnings = ["error"]
 asyncio_mode = "auto"
+py311_task = true
 log_cli = true
-addopts = "-s"
+
 
 [tool.coverage.run]
 branch = true

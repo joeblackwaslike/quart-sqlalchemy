@@ -6,6 +6,7 @@ import pytest
 import sqlalchemy
 import sqlalchemy.orm
 from quart import Quart
+from sqlalchemy.orm import Mapped
 
 from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.model import DefaultMeta
@@ -46,7 +47,7 @@ async def test_custom_declarative_class(app: Quart, base: t.Any) -> None:
 
 async def test_model_repr(app: Quart, db: SQLAlchemy) -> None:
     class User(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     async with app.app_context():
         db.create_all()

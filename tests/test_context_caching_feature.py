@@ -2,6 +2,7 @@ import pytest
 import sqlalchemy
 import sqlalchemy.orm
 from quart import Quart
+from sqlalchemy.orm import Mapped
 
 from quart_sqlalchemy import SQLAlchemy
 
@@ -23,7 +24,7 @@ class TestContextCaching:
     @pytest.fixture
     async def Todo(self, db: SQLAlchemy, app: Quart):
         class Todo(db.Model):
-            id = sa.Column(sa.Integer, primary_key=True)
+            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
         async with app.app_context():
             db.create_all()

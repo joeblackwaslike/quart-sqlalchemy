@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sqlalchemy
+import sqlalchemy.orm
 from quart import Quart
+from sqlalchemy.orm import Mapped
 
 from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.record_queries import get_recorded_queries
@@ -16,7 +18,7 @@ async def test_query_info(app: Quart) -> None:
         db = SQLAlchemy(app)
 
         class Example(db.Model):
-            id = sa.Column(sa.Integer, primary_key=True)
+            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
         db.create_all()
         db.session.execute(sa.select(Example).filter(Example.id < 5)).scalars()

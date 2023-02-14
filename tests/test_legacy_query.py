@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import typing as t
 import warnings
-from typing import Any
-from typing import Generator
 
 import pytest
 import sqlalchemy
 import sqlalchemy.exc
+import sqlalchemy.orm
 from quart import Quart
+from sqlalchemy.orm import Mapped
 from werkzeug.exceptions import NotFound
 
 from quart_sqlalchemy import SQLAlchemy
@@ -18,7 +19,7 @@ sa = sqlalchemy
 
 
 @pytest.fixture(autouse=True)
-def ignore_query_warning() -> Generator[None, None, None]:
+def ignore_query_warning() -> t.Generator[None, None, None]:
     if hasattr(sa.exc, "LegacyAPIWarning"):
         with warnings.catch_warnings():
             exc = sa.exc.LegacyAPIWarning
@@ -28,7 +29,7 @@ def ignore_query_warning() -> Generator[None, None, None]:
         yield
 
 
-async def test_get_or_404(app: Quart, db: SQLAlchemy, Todo: Any) -> None:
+async def test_get_or_404(app: Quart, db: SQLAlchemy, Todo: t.Any) -> None:
     async with app.app_context():
         item = Todo()
         db.session.add(item)
@@ -39,7 +40,7 @@ async def test_get_or_404(app: Quart, db: SQLAlchemy, Todo: Any) -> None:
             Todo.query.get_or_404(2)
 
 
-async def test_first_or_404(app: Quart, db: SQLAlchemy, Todo: Any) -> None:
+async def test_first_or_404(app: Quart, db: SQLAlchemy, Todo: t.Any) -> None:
     async with app.app_context():
         db.session.add(Todo(title="a"))
         db.session.commit()
@@ -49,7 +50,7 @@ async def test_first_or_404(app: Quart, db: SQLAlchemy, Todo: Any) -> None:
             Todo.query.filter_by(title="b").first_or_404()
 
 
-async def test_one_or_404(app: Quart, db: SQLAlchemy, Todo: Any) -> None:
+async def test_one_or_404(app: Quart, db: SQLAlchemy, Todo: t.Any) -> None:
     async with app.app_context():
         db.session.add(Todo(title="a"))
         db.session.add(Todo(title="b"))
@@ -66,7 +67,7 @@ async def test_one_or_404(app: Quart, db: SQLAlchemy, Todo: Any) -> None:
             Todo.query.filter_by(title="c").one_or_404()
 
 
-async def test_paginate(app: Quart, db: SQLAlchemy, Todo: Any) -> None:
+async def test_paginate(app: Quart, db: SQLAlchemy, Todo: t.Any) -> None:
     async with app.app_context():
         db.session.add_all(Todo() for _ in range(150))
         db.session.commit()
@@ -78,15 +79,21 @@ async def test_paginate(app: Quart, db: SQLAlchemy, Todo: Any) -> None:
         assert p2.total == 150
 
 
+# The Query interface is legacy and in order to preserve the custom functionality added to Query,
+# we need to use db.relationship rather than sa.orm.relationship.
+
+
 async def test_default_query_class(app: Quart, db: SQLAlchemy) -> None:
     class Parent(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
-        children1 = db.relationship("Child", backref="parent1", lazy="dynamic")
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
+        children1: Mapped[t.List["Child"]] = db.relationship(
+            "Child", backref="parent1", lazy="dynamic"
+        )
 
     class Child(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
-        parent_id = sa.Column(sa.ForeignKey(Parent.id))
-        parent2 = db.relationship(
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
+        parent_id: Mapped[int] = sa.orm.mapped_column(sa.ForeignKey(Parent.id))
+        parent2: Mapped[Parent] = db.relationship(
             Parent,
             backref=db.backref("children2", lazy="dynamic", viewonly=True),
             viewonly=True,
@@ -108,13 +115,15 @@ async def test_custom_query_class(app: Quart) -> None:
         db = SQLAlchemy(app, query_class=CustomQuery)
 
         class Parent(db.Model):
-            id = sa.Column(sa.Integer, primary_key=True)
-            children1 = db.relationship("Child", backref="parent1", lazy="dynamic")
+            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
+            children1: Mapped[t.List["Child"]] = db.relationship(
+                "Child", backref="parent1", lazy="dynamic"
+            )
 
         class Child(db.Model):
-            id = sa.Column(sa.Integer, primary_key=True)
-            parent_id = sa.Column(sa.ForeignKey(Parent.id))
-            parent2 = db.relationship(
+            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
+            parent_id: Mapped[int] = sa.orm.mapped_column(sa.ForeignKey(Parent.id))
+            parent2: Mapped[Parent] = db.relationship(
                 Parent,
                 backref=db.backref("children2", lazy="dynamic", viewonly=True),
                 viewonly=True,

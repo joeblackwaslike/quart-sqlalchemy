@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import typing as t
-from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from dataclasses import field
@@ -11,6 +10,7 @@ from weakref import WeakKeyDictionary
 
 import quart
 import sqlalchemy
+import sqlalchemy.event
 import sqlalchemy.exc
 import sqlalchemy.ext
 import sqlalchemy.ext.asyncio
@@ -124,22 +124,6 @@ class SQLAlchemy:
         Customize this by passing the ``query_class`` parameter to the extension.
         """
 
-        self.session_scopefunc = session_scopefunc
-        self._session_class = session_class
-
-        self.session = self._make_scoped_session(
-            self._session_options, is_async=self._is_async_session
-        )
-        """A :class:`sa.orm.scoped_session` that creates instances of
-        :class:`.Session` scoped to the current Quart application context. The session
-        will be removed, returning the engine connection to the pool, when the
-        application context exits.
-
-        Customize this by passing ``session_options`` to the extension.
-
-        This requires that a Quart application context is active.
-        """
-
         self.metadatas = {}
         """Map of bind keys to :class:`sqlalchemy.schema.MetaData` instances. The
         ``None`` key refers to the default metadata, and is available as
@@ -149,7 +133,6 @@ class SQLAlchemy:
         extension. This can be used to set a naming convention. When metadata for
         another bind key is created, it copies the default's naming convention.
         """
-
         if metadata is not None:
             metadata.info["bind_key"] = None
             self.metadatas[None] = metadata
@@ -188,7 +171,21 @@ class SQLAlchemy:
         self._engine_options = engine_options or {}
         self._app_engines = WeakKeyDictionary()
 
-        self._scoped_sessions = {}
+        self.session_scopefunc = session_scopefunc
+        self._session_class = session_class
+
+        self.session = self._make_scoped_session(
+            self._session_options, is_async=self._is_async_session
+        )
+        # """A :class:`sa.orm.scoped_session` that creates instances of
+        # :class:`.Session` scoped to the current Quart application context. The session
+        # will be removed, returning the engine connection to the pool, when the
+        # application context exits.
+
+        # Customize this by passing ``session_options`` to the extension.
+
+        # This requires that a Quart application context is active.
+        # """
 
         self._context_caching_enabled = context_caching_enabled
         self._last_app_ctx = None
@@ -216,6 +213,9 @@ class SQLAlchemy:
 
         :param app: The Quart application to initialize.
         """
+
+        signals.before_app_initialized.send(self, app=app)
+
         if "sqlalchemy" in app.extensions:
             raise RuntimeError(
                 "A 'SQLAlchemy' instance has already been registered on this Flask app."
@@ -270,7 +270,7 @@ class SQLAlchemy:
 
             engines.clear()
 
-        # Create the metadata and engine for each bind key.
+        # Create the metadata, engine, and scoped_session for each bind key.
         for key, options in engine_options.items():
             self._make_metadata(key)
             options.setdefault("echo", echo)
@@ -290,6 +290,8 @@ class SQLAlchemy:
             def _handle_appcontext_pushed(app: Quart):
                 nonlocal self
                 self._last_app_ctx = app_ctx._get_current_object()
+
+        signals.after_app_initialized.send(self, app=app)
 
     def _make_scoped_session(
         self,
@@ -459,6 +461,28 @@ class SQLAlchemy:
         model.__fsa__ = self
         return model
 
+    # def _make_declarative_base_20(self, model):
+    #     # if None not in self.metadatas:
+    #     #     # Use the model's metadata as the default metadata.
+    #     #     model.metadata.info["bind_key"] = None  # type: ignore[union-attr]
+    #     #     self.metadatas[None] = model.metadata  # type: ignore[union-attr]
+    #     # else:
+    #     #     # Use the passed in default metadata as the model's metadata.
+    #     #     model.metadata = self.metadatas[None]  # type: ignore[union-attr]
+    #     model.metadata.info.setdefault("bind_key", None)
+
+    #     bind_key = model.metadata.info["bind_key"]
+
+    #     if None not in self.metadatas:
+    #         self.metadatas[None] = model.metadata
+    #     elif self.metadatas[bind_key] != model.metadata:
+    #         self.metadatas[bind_key] = model.metadata
+
+    #     model.query_class = self.Query
+    #     model.query = _QueryProperty()
+    #     # model.__fsa__ = self
+    #     return model
+
     def _apply_driver_defaults(self, options: dict[str, t.Any], app: Quart) -> None:
         """Apply driver-specific configuration to an engine.
 
@@ -580,10 +604,6 @@ class SQLAlchemy:
         return self._app_engines[app]
 
     @property
-    def sessions(self) -> dict[str | None, ScopedSessionType]:
-        self._s
-
-    @property
     def engine(self) -> sa.Engine:
         """The default :class:`~sqlalchemy.engine.Engine` for the current application,
         used by :attr:`session` if the :attr:`Model` or :attr:`sa.Table` being queried does
@@ -616,40 +636,13 @@ class SQLAlchemy:
         engines = app_engines[app]
         return engines[bind_key]
 
-    def bind_context(self, bind_key: t.Optional[str] = None, app: t.Optional[Quart] = None):
-        return BindContext(self, app, bind_key)
-
-        # class BindContext(t.NamedTuple):
-        #     bind_key: t.Optional[str]
-        #     is_async: bool
-        #     metadata: sa.MetaData
-        #     connection: sa.engine.Connection | sa.ext.asyncio.AsyncConnection
-        #     session: sa.orm.scoped_session | sa.ext.asyncio.async_scoped_session
-
-        #     def close(self):
-        #         self.session.close()
-        #         self.session.remove()
-
-        # engine = self.get_bind(bind_key, app=app)
-        # is_async = engine.url.get_dialect().is_async
-
-        # with engine.connect() as connection:
-        #     session_options = self._session_options.copy()
-        #     session_options.update(bind=connection)
-        #     session = self._make_scoped_session(session_options, is_async=is_async)
-
-        #     bind_context = BindContext(
-        #         bind_key=bind_key,
-        #         is_async=is_async,
-        #         metadata=self.metadatas[bind_key],
-        #         connection=connection,
-        #         session=session,
-        #     )
-        #     # self.metadata.create_all(bind=connection)
-        #     try:
-        #         yield bind_context
-        #     finally:
-        #         bind_context.close()
+    def bind_context(
+        self,
+        bind_key: t.Optional[str] = None,
+        execution_options: t.Optional[dict[str, t.Any]] = None,
+        app: t.Optional[Quart] = None,
+    ) -> BindContext:
+        return BindContext(self, app, bind_key, execution_options=execution_options or {})
 
     def _get_app_context(self, cache_fallback_enabled: bool = False):
         try:
@@ -831,9 +824,17 @@ class SQLAlchemy:
 
 @dataclass
 class BindContext:
+    """
+    The addition of engine_execution_options allows for applying specific execution_options to the
+    engine used only in this context.   Examples of such usage include setting a different isolation
+    level specific to this bind context.
+    https://docs.sqlalchemy.org/en/20/core/connections.html#sqlalchemy.engine.Engine.execution_options
+    """
+
     db: InitVar[SQLAlchemy]
     app: InitVar[t.Optional[Quart]]
     bind_key: t.Optional[str]
+    execution_options: dict[str, t.Any] = field(default_factory=dict)
     is_async: bool = field(init=False)
     engine: sa.Engine | sa.ext.asyncio.AsyncEngine = field(init=False)
     metadata: sa.MetaData = field(init=False, repr=False)
@@ -842,8 +843,14 @@ class BindContext:
         init=False, repr=False
     )
 
-    def __post_init__(self, db: SQLAlchemy, app: t.Optional[Quart]):
-        self.engine = db.get_bind(self.bind_key, app=app)
+    def __post_init__(
+        self,
+        db: SQLAlchemy,
+        app: t.Optional[Quart],
+    ):
+        self.engine = db.get_bind(self.bind_key, app=app).execution_options(
+            **self.execution_options
+        )
         self.is_async = self.engine.url.get_dialect().is_async
         self.metadata = db.metadatas[self.bind_key]
         session_options = db._session_options.copy()
@@ -853,6 +860,7 @@ class BindContext:
         self.engine = t.cast(sa.Engine, self.engine)
         self.session = t.cast(sa.orm.scoped_session, self.session)
 
+        self.engine.dispose(close=False)
         self.connection = self.engine.connect()
         self.session.configure(bind=self.connection)
         return self
@@ -868,10 +876,13 @@ class BindContext:
         if exc_val is not None:
             raise exc_val
 
+        self.engine.dispose(close=False)
+
     async def __aenter__(self):
         self.engine = t.cast(sa.ext.asyncio.AsyncEngine, self.engine)
         self.session = t.cast(sa.ext.asyncio.async_scoped_session, self.session)
 
+        await self.engine.dispose(close=False)
         self.connection = await self.engine.connect()
         self.session.configure(bind=self.connection)
         return self
@@ -885,6 +896,7 @@ class BindContext:
 
         await self.session.close()
         await self.connection.close()  # type: ignore
+        await self.engine.dispose()
         await self.session.remove()
 
         if exc_val is not None:

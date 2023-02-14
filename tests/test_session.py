@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import typing as t
+
 import pytest
 import sqlalchemy
+import sqlalchemy.orm
 from quart import Quart
+from sqlalchemy.orm import Mapped
 
 from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.model import Model
 from quart_sqlalchemy.session import RoutingSession
 from quart_sqlalchemy.session import Session
+
+from .base import ComplexTestBase
 
 
 sa = sqlalchemy
@@ -115,11 +121,11 @@ async def test_session_uses_bind_key(app: Quart) -> None:
     db = SQLAlchemy(app)
 
     class User(db.Model):
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     class Post(db.Model):
         __bind_key__ = "a"
-        id = sa.Column(sa.Integer, primary_key=True)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
     async with app.app_context():
         assert db.session.get_bind(mapper=User) is db.engine
@@ -132,14 +138,14 @@ async def test_get_bind_inheritance(app: Quart) -> None:
 
     class User(db.Model):
         __bind_key__ = "a"
-        id = sa.Column(sa.Integer, primary_key=True)
-        type = sa.Column(sa.String, nullable=False)
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
+        type: Mapped[str] = sa.orm.mapped_column(nullable=False)
 
         __mapper_args__ = {"polymorphic_on": type, "polymorphic_identity": "user"}
 
     class Admin(User):
-        id = sa.Column(sa.ForeignKey(User.id), primary_key=True)  # type: ignore[assignment]
-        org = sa.Column(sa.String, nullable=False)
+        id: Mapped[int] = sa.orm.mapped_column(sa.ForeignKey(User.id), primary_key=True)
+        org: Mapped[str] = sa.orm.mapped_column(nullable=False)
 
         __mapper_args__ = {"polymorphic_identity": "admin"}
 
@@ -151,3 +157,15 @@ async def test_get_bind_inheritance(app: Quart) -> None:
         db.session.expire(admin)
 
         assert admin.org == "pallets"
+
+
+class TestRoutingSession(ComplexTestBase):
+    async def test_session_using_bind_executes_on_read_replica_engine(
+        self, app: Quart, db: SQLAlchemy, Todo: t.Any
+    ):
+        async with app.app_context():
+            st = db.select(Todo)
+            result = db.session.using_bind("read-replica").execute(st).scalars().all()
+
+        print(result)
+        assert len(result) == 10

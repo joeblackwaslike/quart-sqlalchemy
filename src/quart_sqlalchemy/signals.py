@@ -23,7 +23,24 @@ async_signals = AsyncNamespace()
 before_engine_created = sync_signals.signal("quart-sqlalchemy.engine.created.before")
 after_engine_created = sync_signals.signal("quart-sqlalchemy.engine.created.after")
 
-after_app_initialized = sync_signals.signal("quart-sqlalchemy.app.initialized.after")
+before_app_initialized = sync_signals.signal(
+    "quart-sqlalchemy.app.initialized.before",
+    doc="""Fired before SQLAlchemy.init_app(app) is called.
+    
+    Handler signature:
+        def handle(sender: SQLAlchemy, app: Quart):
+            ...
+    """,
+)
+after_app_initialized = sync_signals.signal(
+    "quart-sqlalchemy.app.initialized.after",
+    doc="""Fired after SQLAlchemy.init_app(app) is called.
+    
+    Handler signature:
+        def handle(sender: SQLAlchemy, app: Quart):
+            ...
+    """,
+)
 
 before_make_session_factory = sync_signals.signal("quart-sqlalchemy.make-session-factory.before")
 after_make_session_factory = sync_signals.signal("quart-sqlalchemy.make-session-factory.after")

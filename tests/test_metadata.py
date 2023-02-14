@@ -5,6 +5,7 @@ import sqlalchemy
 import sqlalchemy.exc
 import sqlalchemy.orm
 from quart import Quart
+from sqlalchemy.orm import Mapped
 
 from quart_sqlalchemy import SQLAlchemy
 from quart_sqlalchemy.model import DefaultMeta
@@ -64,11 +65,11 @@ async def test_create_drop_all(app: Quart) -> None:
         db = SQLAlchemy(app)
 
         class User(db.Model):
-            id = sa.Column(sa.Integer, primary_key=True)
+            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
         class Post(db.Model):
             __bind_key__ = "a"
-            id = sa.Column(sa.Integer, primary_key=True)
+            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
         with pytest.raises(sa.exc.OperationalError):
             db.session.execute(sa.select(User)).scalars()
@@ -95,11 +96,11 @@ async def test_create_key_spec(app: Quart, bind_key: str | list[str | None]) -> 
         db = SQLAlchemy(app)
 
         class User(db.Model):
-            id = sa.Column(sa.Integer, primary_key=True)
+            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
         class Post(db.Model):
             __bind_key__ = "a"
-            id = sa.Column(sa.Integer, primary_key=True)
+            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
 
         db.create_all(bind_key=bind_key)
         db.session.execute(sa.select(Post)).scalars()
