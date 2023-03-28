@@ -5,26 +5,38 @@ import typing as t
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
-from sqlalchemy.engine.result import _RowData
-from sqlalchemy.orm._typing import _O as DataObjType
-from sqlalchemy.orm.session import _EntityBindKey as DataObjEntity
+import sqlalchemy.sql
+import typing_extensions as tx
+from sqlalchemy.orm.interfaces import ORMOption as _ORMOption
+from sqlalchemy.sql._typing import _ColumnExpressionArgument
+from sqlalchemy.sql._typing import _ColumnsClauseArgument
+from sqlalchemy.sql._typing import _DMLTableArgument
 
 
 sa = sqlalchemy
 
-AnyCallableType = t.Callable[..., t.Any]
+SessionT = t.TypeVar("SessionT", bound=sa.orm.Session)
+EntityT = t.TypeVar("EntityT", bound=sa.orm.DeclarativeBase)
+EntityIdT = t.TypeVar("EntityIdT", bound=t.Any)
 
-EngineType = t.Union[sa.Engine, sa.ext.asyncio.AsyncEngine]
-EngineClassType = t.Type[EngineType]
-SessionType = t.Union[
-    sa.orm.sessionmaker[sa.orm.Session],
-    sa.ext.asyncio.async_sessionmaker[sa.ext.asyncio.AsyncSession],
+ColumnExpr = _ColumnExpressionArgument
+Selectable = _ColumnsClauseArgument
+DMLTable = _DMLTableArgument
+ORMOption = _ORMOption
+
+TransactionIsolationLevel = tx.Literal[
+    "AUTOCOMMIT",
+    "READ COMMITTED",
+    "READ UNCOMMITTED",
+    "REPEATABLE READ",
+    "SERIALIZABLE",
 ]
-SessionFactoryType = t.Type[SessionType]
+BoundParamStyle = tx.Literal["qmark", "numeric", "named", "format"]
+SessionBindKey = t.Union[t.Type[t.Any], sa.orm.Mapper[t.Any], sa.sql.TableClause, str]
+SessionBind = t.Union[sa.Engine, sa.Connection]
+SynchronizeSession = tx.Literal[False, "auto", "evaluate", "fetch"]
+DMLStrategy = tx.Literal["bulk", "raw", "orm", "auto"]
 
-ScopedSessionType = t.Union[sa.orm.scoped_session, sa.ext.asyncio.async_scoped_session]
-ScopedSessionFactoryType = t.Type[ScopedSessionType]
-
-EntityType = DataObjEntity[DataObjType]
-IdentType = t.Union[t.Any, t.Tuple[t.Any, ...]]
-RowDataType = _RowData
+SABind = t.Union[
+    sa.Engine, sa.Connection, sa.ext.asyncio.AsyncEngine, sa.ext.asyncio.AsyncConnection
+]

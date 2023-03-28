@@ -1,14 +1,20 @@
 [project]
 name = "quart-sqlalchemy"
-version = "2.0.0"
-description = "A Quart port of Flask SQLAlchemy."
+version = "3.0.0"
+description = "SQLAlchemy for humans, with framework adapter for Quart."
 authors = [
     {name = "Joe Black", email = "me@joeblack.nyc"},
 ]
 dependencies = [
     "quart~=0.18.3",
     "SQLAlchemy[asyncio]>=1.4.35, <2.1.0",
+    "SQLAlchemy-Utils",
     "anyio~=3.3.4",
+    "aiosqlite",
+    "pydantic",
+    "tenacity>=8.2.2",
+    "sqlapagination<=0.0.1",
+    "exceptiongroup<=1.1.1"
 ]
 requires-python = ">=3.7"
 readme = "README.rst"
@@ -18,21 +24,17 @@ license = {text = "MIT"}
 "Homepage" = "https://github.com/joeblackwaslike/quart-sqlalchemy"
 "Bug Tracker" = "https://github.com/joeblackwaslike/quart-sqlalchemy/issues"
 
-# switch to setuptools due to recent issues with pdm versions
 [build-system]
-# requires = ["pdm-pep517>=1.0"]
-# build-backend = "pdm.pep517.api"
 requires = ["setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
-# [tool.pdm]
-# version = { source = "file", path = "src/quart_sqlalchemy/__init__.py" }
 
-[tool.pdm.dev-dependencies]
+[project.optional-dependencies]
 tests = [
     "pytest~=7.2.1",
     # "pytest-asyncio~=0.20.3",
-    "pytest-asyncio @ https://github.com/joeblackwaslike/pytest-asyncio/releases/download/v0.20.4.dev42/pytest_asyncio-0.20.4.dev42-py3-none-any.whl",
+    # "pytest-asyncio @ https://github.com/joeblackwaslike/pytest-asyncio/releases/download/v0.20.4.dev42/pytest_asyncio-0.20.4.dev42-py3-none-any.whl",
+    "pytest-asyncio @ https://github.com/joeblackwaslike/pytest-asyncio/releases/download/v0.20.4.dev43/pytest_asyncio-0.20.4.dev43-py3-none-any.whl",
     "pytest-mock~=3.10.0",
     "pytest-cov",
     "coverage[toml]",
@@ -42,7 +44,9 @@ dev = [
     "tox",
     "tox-pdm",
     "mypy",
-    "sqlalchemy",
+    "wemake-python-styleguide",
+    "IPython",
+    "black",
 ]
 docs = [
     "sphinx",
@@ -50,7 +54,6 @@ docs = [
     "sphinx-issues",
     "sphinxcontrib-log-cabinet",
 ]
-
 
 [tool.pdm.build]
 source-includes = [
@@ -66,13 +69,12 @@ excludes = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-rsx --tb=short --loop-scope class"
+addopts = "-rsx --tb=short --loop-scope session"
 testpaths = ["tests"]
 filterwarnings = ["error"]
 asyncio_mode = "auto"
 py311_task = true
 log_cli = true
-
 
 [tool.coverage.run]
 branch = true
@@ -94,6 +96,7 @@ known_first_party = ["quart_sqlalchemy", "tests"]
 
 [tool.mypy]
 python_version = "3.7"
+plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 files = ["src/quart_sqlalchemy", "tests"]
 show_error_codes = true
 pretty = true
@@ -102,6 +105,9 @@ strict = true
 disable_error_code = ["name-defined"]
 # db.Model is Any
 disallow_subclassing_any = false
+allow_untyped_globals = true
+allow_untyped_defs = true
+allow_untyped_calls = true
 
 [[tool.mypy.overrides]]
 module = [
@@ -109,3 +115,82 @@ module = [
     "importlib_metadata.*",
 ]
 ignore_missing_imports = true
+
+[tool.pylint.messages_control]
+max-line-length = 100
+disable = ["missing-docstring", "protected-access"]
+
+[tool.flakeheaven]
+baseline = ".flakeheaven_baseline"
+exclude = ["W503"]
+
+[tool.flakeheaven.plugins]
+"flake8-*" = ["+*"]
+"flake8-docstrings" = [
+    "+*",
+    "-D100",
+    "-D101",
+    "-D102",
+    "-D103",
+    "-D106",
+    "-D107",
+    "-D401",
+]
+"flake8-quotes" = [
+    "+*",
+    "-Q000",
+]
+"flake8-isort" = [
+    "+*",
+    "-I001",
+    "-I003",
+    "-I005",
+]
+"flake8-bandit" = [
+    "+*",
+    "-S101",
+]
+"mccabe" = ["+*"]
+"pycodestyle" = ["+*"]
+"pyflakes" = [
+    "+*",
+]
+"wemake-python-styleguide" = [
+    "+*",
+    "-WPS110",
+    "-WPS111",
+    "-WPS115",
+    "-WPS118",
+    "-WPS120",  # allow variables with trailing underscore
+    "-WPS201",
+    "-WPS204",
+    "-WPS210",
+    "-WPS211",
+    "-WPS214",
+    "-WPS221",
+    "-WPS224",
+    "-WPS225",  # allow multiple except in try block
+    "-WPS226",
+    "-WPS230",
+    "-WPS231",
+    "-WPS232",
+    "-WPS238",  # allow multiple raises in function
+    "-WPS305",  # allow f-strings
+    "-WPS306",
+    "-WPS326",
+    "-WPS337",  # allow multi-line conditionals
+    "-WPS338",
+    "-WPS420",  # allow pass keyword
+    "-WPS429",
+    "-WPS430",  # allow nested functions
+    "-WPS431",
+    "-WPS432",
+    "-WPS433",
+    "-WPS435",
+    "-WPS437",
+    "-WPS463",  # Unsure what it means "Found a getter without a return value"
+    "-WPS473",
+    "-WPS503",
+    "-WPS505",
+    "-WPS604",  # allow pass inside 'class' body
+]

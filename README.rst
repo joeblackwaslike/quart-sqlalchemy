@@ -1,14 +1,21 @@
 Quart-SQLAlchemy
 ================
 
-Quart-SQLAlchemy is an extension for `Quart` that adds support for
-`SQLAlchemy` to your application. It aims to simplify using SQLAlchemy
-with Quart by providing useful defaults and extra helpers that make it
-easier to accomplish common tasks.
+Quart-SQLAlchemy provides a simple wrapper for SQLAlchemy made for humans.  I've kept things as
+simple as possible, abstracted much complexity, and implemented everything using the current
+best practices recommended by the SQLAlchemy developers and targets version 2.0.x+.  As a
+convenience, a framework adapter is provided for Quart, but the rest of this library is framework
+agnostic.
 
-This work is based on the excellent Flask extension [FlaskSQLAlchemy](https://github.com/pallets-eco/flask-sqlalchemy/tree/main/examples)
-and is essentialy a port of that to Quart.
-
+The bundled SQLAlchemy object intentionally discards the use of scoped_session and it's async
+counterpart.  With version 2.x+, it's expected that sessions are short lived and vanilla and
+context managers are used for managing sesssion lifecycle.  Any operations that intend to change
+state should open an explicit transaction using the context manager returned by session.begin().
+This pattern of usage prevents problems like sessions being shared between processes, threads, or
+tasks entirely, as opposed to the past conventions of mitigating this type of sharing.  Another
+best practice is expecting any transaction to intermittently fail, and structuring your logic to
+automatically perform retries.  You can find the retrying session context managers in the retry
+module.
 
 Installing
 ----------
@@ -17,7 +24,7 @@ Install and update using `pip`_:
 
 .. code-block:: text
 
-  $ pip install -U quart-sqlalchemy
+  $ pip install pip uninstall -e git+ssh://git@github.com/joeblackwaslike/quart-sqlalchemy.git@ebe5a53bbece0914a178d3be4d1b3e7104b31490#egg=quart_sqlalchemy
 
 .. _pip: https://pip.pypa.io/en/stable/getting-started/
 
@@ -27,26 +34,54 @@ A Simple Example
 
 .. code-block:: python
 
+    import sqlalchemy as sa
+    import sqlalchemy.orm
+    from sqlalchemy.orm import Mapped, mapped_column
     from quart import Quart
-    from quart_sqlalchemy import SQLAlchemy
+
+    from quart_sqlalchemy import SQLAlchemyConfig
+    from quart_sqlalchemy.framework import QuartSQLAlchemy
 
     app = Quart(__name__)
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///example.sqlite"
-    db = SQLAlchemy(app)
+
+    db = QuartSQLAlchemy(
+      config=SQLAlchemyConfig
+          binds=dict(
+              default=dict(
+                  engine=dict(
+                      url="sqlite:///",
+                      echo=True,
+                      connect_args=dict(check_same_thread=False),
+                  ),
+                  session=dict(
+                      expire_on_commit=False,
+                  ),
+              )
+          )
+      ),
+      app,
+    )
 
     class User(db.Model)
-        id = db.Column(db.Integer, primary_key=True)
-        username = db.Column(db.String, unique=True, nullable=False)
+        __tablename__ = "user"
 
-    with app.app_context():
-        db.create_all()
+        id: Mapped[int] = mapped_column(sa.Identity(), primary_key=True, autoincrement=True)
+        name: Mapped[str] = mapped_column(default="default")
 
-        db.session.add(User(username="example"))
-        db.session.commit()
+    db.create_all()
+    
+    with db.bind.Session() as s:
+        with s.begin():
+            user = User(username="example")
+            s.add(user)
+            s.flush()
+            s.refresh(user)
 
-        users = db.session.execute(db.select(User)).scalars()
-
-
+        users = s.scalars(sa.select(User)).all()
+    
+    print(user, users)
+    assert user in users
+  
 Contributing
 ------------
 
@@ -54,27 +89,3 @@ For guidance on setting up a development environment and how to make a
 contribution to Quart-SQLAlchemy, see the `contributing guidelines`_.
 
 .. _contributing guidelines: https://github.com/joeblackwaslike/quart-sqlalchemy/blob/main/CONTRIBUTING.rst
-
-
-Donate
-------
-
-The Pallets organization develops and supports Flask-SQLAlchemy and
-other popular packages. In order to grow the community of contributors
-and users, and allow the maintainers to devote more time to the
-projects, `please donate today`_.
-
-.. _please donate today: https://palletsprojects.com/donate
-
-
-Links
------
-
--   Documentation: 
--   Changes: 
--   PyPI Releases: https://pypi.org/project/
--   Source Code: https://github.com/joeblackwaslike/quart-sqlalchemy/
--   Issue Tracker: https://github.com/joeblackwaslike/quart-sqlalchemy/issues/
--   Website: 
--   Twitter: 
--   Chat: 

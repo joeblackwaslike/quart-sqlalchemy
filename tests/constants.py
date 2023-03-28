@@ -1,39 +1,47 @@
-import sqlalchemy
+from quart_sqlalchemy import Base
+from quart_sqlalchemy.retry import RetryingSession
 
 
-sa = sqlalchemy
-
-simple_config = {
-    "SQLALCHEMY_DATABASE_URI": "sqlite://",
-    "SQLALCHEMY_ECHO": False,
-    "SQLALCHEMY_ENGINE_OPTIONS": dict(
-        connect_args=dict(
-            check_same_thread=True,
-        ),
-    ),
-}
-async_config = {
-    "SQLALCHEMY_DATABASE_URI": "sqlite+aiosqlite://",
-    "SQLALCHEMY_ENGINE_OPTIONS": dict(
-        connect_args=dict(
-            check_same_thread=True,
-        ),
-    ),
-}
-complex_config = {
-    "SQLALCHEMY_BINDS": {
-        None: dict(
-            url="sqlite:///file:mem.db?mode=memory&cache=shared&uri=true",
-            connect_args=dict(check_same_thread=False),
-        ),
-        "read-replica": dict(
-            url="sqlite:///file:mem.db?mode=memory&cache=shared&uri=true",
-            connect_args=dict(check_same_thread=False),
-        ),
-        "async": dict(
-            url="sqlite+aiosqlite:///file:mem.db?mode=memory&cache=shared&uri=true",
-            connect_args=dict(check_same_thread=False),
-        ),
+simple_mapping_config = {
+    "model_class": Base,
+    "binds": {
+        "default": {
+            "engine": {"url": "sqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
+            "session": {"expire_on_commit": False},
+        }
     },
-    "SQLALCHEMY_ECHO": False,
+}
+
+complex_mapping_config = {
+    "model_class": Base,
+    "binds": {
+        "default": {
+            "engine": {"url": "sqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
+            "session": {"expire_on_commit": False},
+        },
+        "read-replica": {
+            "engine": {"url": "sqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
+            "session": {"expire_on_commit": False},
+            "read_only": True,
+        },
+        "retry": {
+            "engine": {"url": "sqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
+            "session": {"expire_on_commit": False, "class_": RetryingSession},
+            "read_only": True,
+        },
+        "async": {
+            "engine": {"url": "sqlite+aiosqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
+            "session": {"expire_on_commit": False},
+        },
+    },
+}
+
+async_mapping_config = {
+    "model_class": Base,
+    "binds": {
+        "default": {
+            "engine": {"url": "sqlite+aiosqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
+            "session": {"expire_on_commit": False},
+        }
+    },
 }

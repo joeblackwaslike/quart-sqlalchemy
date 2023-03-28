@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import random
 import typing as t
+from datetime import datetime
 
 import pytest
 import sqlalchemy
@@ -8,11 +10,10 @@ import sqlalchemy.orm
 from quart import Quart
 from sqlalchemy.orm import Mapped
 
-from quart_sqlalchemy import SQLAlchemy
+from quart_sqlalchemy import SQLAlchemyConfig
+from quart_sqlalchemy.framework import QuartSQLAlchemy
 
-from .constants import async_config
-from .constants import complex_config
-from .constants import simple_config
+from . import constants
 
 
 sa = sqlalchemy
@@ -22,96 +23,133 @@ class SimpleTestBase:
     @pytest.fixture(scope="class")
     def app(self, request):
         app = Quart(request.module.__name__)
-        app.config.from_mapping(simple_config)
+        app.config.from_mapping({"TESTING": True})
         return app
 
     @pytest.fixture(scope="class")
-    def db(self, app: Quart):
-        return SQLAlchemy(app)
+    def sqlalchemy_config(self):
+        return SQLAlchemyConfig.parse_obj(constants.simple_mapping_config)
 
     @pytest.fixture(scope="class")
-    async def Todo(self, app: Quart, db: SQLAlchemy):
+    def db(self, sqlalchemy_config, app: Quart) -> QuartSQLAlchemy:
+        return QuartSQLAlchemy(sqlalchemy_config, app)
+        # yield db
+        # db.drop_all()
+
+    @pytest.fixture(scope="class")
+    def models(self, app: Quart, db: QuartSQLAlchemy) -> t.Mapping[str, t.Type[t.Any]]:
         class Todo(db.Model):
-            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
+            id: Mapped[int] = sa.orm.mapped_column(
+                sa.Identity(), primary_key=True, autoincrement=True
+            )
             title: Mapped[str] = sa.orm.mapped_column(default="default")
+            user_id: Mapped[t.Optional[int]] = sa.orm.mapped_column(sa.ForeignKey("user.id"))
 
-        async with app.app_context():
-            db.create_all(None)
+            user: Mapped[t.Optional["User"]] = sa.orm.relationship(
+                back_populates="todos", lazy="noload", uselist=False
+            )
 
-        yield Todo
+        class User(db.Model):
+            id: Mapped[int] = sa.orm.mapped_column(
+                sa.Identity(),
+                primary_key=True,
+                autoincrement=True,
+            )
+            name: Mapped[str] = sa.orm.mapped_column(default="default")
 
-        async with app.app_context():
-            db.drop_all(None)
+            created_at: Mapped[datetime] = sa.orm.mapped_column(
+                default=sa.func.now(),
+                server_default=sa.FetchedValue(),
+            )
 
+            time_updated: Mapped[datetime] = sa.orm.mapped_column(
+                default=sa.func.now(),
+                onupdate=sa.func.now(),
+                server_default=sa.FetchedValue(),
+                server_onupdate=sa.FetchedValue(),
+            )
 
-class AsyncTestBase:
-    @pytest.fixture(scope="class")
-    def app(self, request: pytest.FixtureRequest) -> Quart:
-        app = Quart(__name__)
-        app.config.from_mapping(async_config)
-        return app
+            todos: Mapped[t.List[Todo]] = sa.orm.relationship(lazy="noload", back_populates="user")
 
-    @pytest.fixture(scope="class")
-    def db(self, app: Quart) -> SQLAlchemy:
-        return SQLAlchemy(app, is_async_session=True)
-
-    @pytest.fixture(scope="class")
-    async def Todo(self, app: Quart, db: SQLAlchemy) -> t.Any:
-        class Todo(db.Model):
-            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
-            title: Mapped[str] = sa.orm.mapped_column(default="default")
-
-        async with app.app_context():
-            await db.async_create_all(None)
-
-        yield Todo
-
-        async with app.app_context():
-            await db.async_drop_all(None)
+        return dict(todo=Todo, user=User)
 
     @pytest.fixture(scope="class", autouse=True)
-    async def todo_fixtures(self, app, db, Todo):
-        async with app.app_context():
-            todos = [Todo(title=f"todo: {i}") for i in range(10)]
-
-            db.session.add_all(todos)
-            await db.session.commit()
-
-        return
-
-
-class ComplexTestBase:
-    @pytest.fixture(scope="class")
-    def app(self):
-        app = Quart(__name__)
-        app.config.from_mapping(complex_config)
-        return app
+    def create_drop_all(self, db: QuartSQLAlchemy, models):
+        db.create_all()
+        yield
+        db.drop_all()
 
     @pytest.fixture(scope="class")
-    def db(self, app: Quart):
-        return SQLAlchemy(app)
+    def Todo(self, models: t.Mapping[str, t.Type[t.Any]]) -> t.Type[sa.orm.DeclarativeBase]:
+        return models["todo"]
 
     @pytest.fixture(scope="class")
-    async def Todo(self, app: Quart, db: SQLAlchemy):
-        class Todo(db.Model):
-            id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
-            title: Mapped[str] = sa.orm.mapped_column(default="default")
+    def User(self, models: t.Mapping[str, t.Type[t.Any]]) -> t.Type[sa.orm.DeclarativeBase]:
+        return models["user"]
 
-        async with app.app_context():
-            db.create_all(None)
+    @pytest.fixture(scope="class")
+    def _user_fixtures(self, User: t.Type[t.Any], Todo: t.Type[t.Any]):
+        users = []
+        for i in range(5):
+            user = User(name=f"user: {i}")
+            for j in range(random.randint(0, 6)):
+                todo = Todo(title=f"todo: {j}")
+                user.todos.append(todo)
+            users.append(user)
+        return users
 
-        yield Todo
-
-        async with app.app_context():
-            db.drop_all(None)
+    @pytest.fixture(scope="class")
+    def _add_fixtures(
+        self, db: QuartSQLAlchemy, User: t.Type[t.Any], Todo: t.Type[t.Any], _user_fixtures
+    ) -> None:
+        with db.bind.Session() as s:
+            with s.begin():
+                s.add_all(_user_fixtures)
 
     @pytest.fixture(scope="class", autouse=True)
-    async def todo_fixtures(self, app: Quart, db: SQLAlchemy, Todo: t.Any):
-        async with app.app_context():
-            todos = [Todo(title=f"todo: {i}") for i in range(10)]
+    def db_fixtures(
+        self, db: QuartSQLAlchemy, User: t.Type[t.Any], Todo: t.Type[t.Any], _add_fixtures
+    ) -> t.Dict[t.Type[t.Any], t.Sequence[t.Any]]:
+        with db.bind.Session() as s:
+            users = s.scalars(sa.select(User).options(sa.orm.selectinload(User.todos))).all()
+            todos = s.scalars(sa.select(Todo).options(sa.orm.selectinload(Todo.user))).all()
 
-            db.session.add_all(todos)
-            db.session.commit()
+        return {User: users, Todo: todos}
 
-            st = db.select(Todo)
-            result = db.session.execute(st).scalars().all()
+
+class AsyncTestBase(SimpleTestBase):
+    @pytest.fixture(scope="class")
+    def sqlalchemy_config(self):
+        return SQLAlchemyConfig.parse_obj(constants.async_mapping_config)
+
+    @pytest.fixture(scope="class", autouse=True)
+    async def create_drop_all(self, db: QuartSQLAlchemy, models) -> t.AsyncGenerator[None, None]:
+        await db.create_all()
+        yield
+        await db.drop_all()
+
+    @pytest.fixture(scope="class")
+    async def _add_fixtures(
+        self, db: QuartSQLAlchemy, User: t.Type[t.Any], Todo: t.Type[t.Any], _user_fixtures
+    ) -> None:
+        async with db.bind.Session() as s:
+            async with s.begin():
+                s.add_all(_user_fixtures)
+
+    @pytest.fixture(scope="class", autouse=True)
+    async def db_fixtures(
+        self, db: QuartSQLAlchemy, User: t.Type[t.Any], Todo: t.Type[t.Any], _add_fixtures
+    ) -> t.Dict[t.Type[t.Any], t.Sequence[t.Any]]:
+        async with db.bind.Session() as s:
+            users = (
+                await s.scalars(sa.select(User).options(sa.orm.selectinload(User.todos)))
+            ).all()
+            todos = (await s.scalars(sa.select(Todo).options(sa.orm.selectinload(Todo.user)))).all()
+
+        return {User: users, Todo: todos}
+
+
+class ComplexTestBase(SimpleTestBase):
+    @pytest.fixture(scope="class")
+    def sqlalchemy_config(self):
+        return SQLAlchemyConfig.parse_obj(constants.complex_mapping_config)

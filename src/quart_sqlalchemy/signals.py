@@ -1,18 +1,9 @@
 from __future__ import annotations
 
-import typing as t
-from dataclasses import dataclass
-
 import sqlalchemy
 import sqlalchemy.orm
 from blinker import Namespace
-from quart import Quart
 from quart.signals import AsyncNamespace
-from sqlalchemy.engine import Engine
-
-from .types import AnyCallableType
-from .types import ScopedSessionFactoryType
-from .types import SessionFactoryType
 
 
 sa = sqlalchemy
@@ -20,56 +11,105 @@ sa = sqlalchemy
 sync_signals = Namespace()
 async_signals = AsyncNamespace()
 
-before_engine_created = sync_signals.signal("quart-sqlalchemy.engine.created.before")
-after_engine_created = sync_signals.signal("quart-sqlalchemy.engine.created.after")
 
-before_app_initialized = sync_signals.signal(
-    "quart-sqlalchemy.app.initialized.before",
+before_bind_engine_created = sync_signals.signal(
+    "quart-sqlalchemy.bind.engine.created.before",
+    doc="""Called before a bind creates an engine.
+
+    Handlers should have the following signature:
+        def handler(
+            sender: t.Union[Bind, AsyncBind],
+            config: Dict[str, Any],
+            prefix: str,
+        ) -> None:
+            ...
+    """,
+)
+after_bind_engine_created = sync_signals.signal(
+    "quart-sqlalchemy.bind.engine.created.after",
+    doc="""Called after a bind creates an engine.
+
+    Handlers should have the following signature:
+        def handler(
+            sender: t.Union[Bind, AsyncBind],
+            config: Dict[str, Any],
+            prefix: str,
+            engine: sa.Engine,
+        ) -> None:
+            ...
+    """,
+)
+
+before_bind_session_factory_created = sync_signals.signal(
+    "quart-sqlalchemy.bind.session_factory.created.before",
+    doc="""Called before a bind creates a session_factory.
+
+    Handlers should have the following signature:
+        def handler(sender: t.Union[Bind, AsyncBind], options: Dict[str, Any]) -> None:
+            ...
+    """,
+)
+after_bind_session_factory_created = sync_signals.signal(
+    "quart-sqlalchemy.bind.session_factory.created.after",
+    doc="""Called after a bind creates a session_factory.
+
+    Handlers should have the following signature:
+        def handler(
+            sender: t.Union[Bind, AsyncBind],
+            options: Dict[str, Any],
+            session_factory: t.Union[sa.orm.sessionmaker, sa.ext.asyncio.async_sessionmaker],
+        ) -> None:
+            ...
+    """,
+)
+
+
+bind_context_entered = sync_signals.signal(
+    "quart-sqlalchemy.bind.context.entered",
+    doc="""Called when a bind context is entered.
+
+    Handlers should have the following signature:
+        def handler(
+            sender: t.Union[Bind, AsyncBind],
+            engine_execution_options: Dict[str, Any],
+            session_execution_options: Dict[str, Any],
+            context: BindContext,
+        ) -> None:
+            ...
+    """,
+)
+
+bind_context_exited = sync_signals.signal(
+    "quart-sqlalchemy.bind.context.exited",
+    doc="""Called when a bind context is exited.
+
+    Handlers should have the following signature:
+        def handler(
+            sender: t.Union[Bind, AsyncBind],
+            engine_execution_options: Dict[str, Any],
+            session_execution_options: Dict[str, Any],
+            context: BindContext,
+        ) -> None:
+            ...
+    """,
+)
+
+
+before_framework_extension_initialization = sync_signals.signal(
+    "quart-sqlalchemy.framework.extension.initialization.before",
     doc="""Fired before SQLAlchemy.init_app(app) is called.
     
     Handler signature:
-        def handle(sender: SQLAlchemy, app: Quart):
+        def handle(sender: QuartSQLAlchemy, app: Quart):
             ...
     """,
 )
-after_app_initialized = sync_signals.signal(
-    "quart-sqlalchemy.app.initialized.after",
+after_framework_extension_initialization = sync_signals.signal(
+    "quart-sqlalchemy.framework.extension.initialization.after",
     doc="""Fired after SQLAlchemy.init_app(app) is called.
     
     Handler signature:
-        def handle(sender: SQLAlchemy, app: Quart):
+        def handle(sender: QuartSQLAlchemy, app: Quart):
             ...
     """,
 )
-
-before_make_session_factory = sync_signals.signal("quart-sqlalchemy.make-session-factory.before")
-after_make_session_factory = sync_signals.signal("quart-sqlalchemy.make-session-factory.after")
-
-before_make_scoped_session = sync_signals.signal("quart-sqlalchemy.make-scoped-session.before")
-after_make_scoped_session = sync_signals.signal("quart-sqlalchemy.make-scoped-session.after")
-
-
-@dataclass
-class EngineContext:
-    bind_key: t.Optional[str]
-    options: dict[str, t.Any]
-    app: Quart
-    factory: t.Callable[[dict[str, t.Any], str], Engine]
-    url: sa.URL
-    is_async: bool
-
-
-@dataclass
-class SessionmakerContext:
-    is_async: bool
-    options: dict[str, t.Any]
-    factory: AnyCallableType
-
-
-@dataclass
-class ScopedSessionContext:
-    is_async: bool
-    scopefunc: t.Callable[[], int]
-    options: dict[str, t.Any]
-    session_factory: t.Callable[[dict[str, t.Any], bool], SessionFactoryType]
-    scoped_session_factory: ScopedSessionFactoryType
