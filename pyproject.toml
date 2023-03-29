@@ -1,20 +1,20 @@
 [project]
 name = "quart-sqlalchemy"
-version = "3.0.1"
+version = "3.0.2"
 description = "SQLAlchemy for humans, with framework adapter for Quart."
 authors = [
     {name = "Joe Black", email = "me@joeblack.nyc"},
 ]
 dependencies = [
-    "quart~=0.18.3",
+    "quart>=0.18.3",
     "SQLAlchemy[asyncio]>=1.4.35, <2.1.0",
     "SQLAlchemy-Utils",
-    "anyio~=3.3.4",
+    "anyio",
     "aiosqlite",
     "pydantic",
-    "tenacity>=8.2.2",
-    "sqlapagination<=0.0.1",
-    "exceptiongroup<=1.1.1"
+    "tenacity",
+    "sqlapagination",
+    "exceptiongroup"
 ]
 requires-python = ">=3.7"
 readme = "README.rst"
@@ -31,11 +31,11 @@ build-backend = "setuptools.build_meta"
 
 [project.optional-dependencies]
 tests = [
-    "pytest~=7.2.1",
+    "pytest",
     # "pytest-asyncio~=0.20.3",
     # "pytest-asyncio @ https://github.com/joeblackwaslike/pytest-asyncio/releases/download/v0.20.4.dev42/pytest_asyncio-0.20.4.dev42-py3-none-any.whl",
     "pytest-asyncio @ https://github.com/joeblackwaslike/pytest-asyncio/releases/download/v0.20.4.dev43/pytest_asyncio-0.20.4.dev43-py3-none-any.whl",
-    "pytest-mock~=3.10.0",
+    "pytest-mock",
     "pytest-cov",
     "coverage[toml]",
 ]
