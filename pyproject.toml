@@ -1,6 +1,6 @@
 [project]
 name = "quart-sqlalchemy"
-version = "3.0.0"
+version = "3.0.1"
 description = "SQLAlchemy for humans, with framework adapter for Quart."
 authors = [
     {name = "Joe Black", email = "me@joeblack.nyc"},
