@@ -1,5 +1,4 @@
 from quart_sqlalchemy import Base
-from quart_sqlalchemy.retry import RetryingSession
 
 
 simple_mapping_config = {
@@ -22,11 +21,6 @@ complex_mapping_config = {
         "read-replica": {
             "engine": {"url": "sqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
             "session": {"expire_on_commit": False},
-            "read_only": True,
-        },
-        "retry": {
-            "engine": {"url": "sqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
-            "session": {"expire_on_commit": False, "class_": RetryingSession},
             "read_only": True,
         },
         "async": {

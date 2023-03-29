@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import typing as t
 
-from ..model import SoftDeleteMixin
-from ..types import EntityT
-from ..util import lazy_property
+from quart_sqlalchemy.model import SoftDeleteMixin
+from quart_sqlalchemy.types import EntityT
+from quart_sqlalchemy.util import lazy_property
 
 
 class TableMetadataMixin(t.Generic[EntityT]):

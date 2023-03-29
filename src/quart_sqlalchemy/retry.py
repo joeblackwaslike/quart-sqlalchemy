@@ -1,3 +1,94 @@
+"""This module is a best effort first-iteration attempt to add retry logic to sqlalchemy.
+
+It's expected when working with a remote database to encounter exceptions related to deadlocks,
+transaction isolation measures, and overall connectivity issues.  These exceptions are almost
+always from the DB-API level and mostly inherit from:
+    * sqlalchemy.exc.OperationalError
+    * sqlalchemy.exc.InternalError
+
+The tenacity library can be used here to add some retry logic to sqlalchemy transactions.
+
+There are a few ways to use tenacity:
+    * You can use the t`enacity.retry` decorator to decorate the callable with retry logic.
+    * You can use the `tenacity.Retrying` or `tenacity.AsyncRetrying` context managers to add
+      retry logic to a block of code.
+
+WARNING:  The following code in this module is experimental and needs to be completed before anything here
+can be relied on.  It probably doesn't work in it's current form.  Use the examples under Usage instead.
+    * RetryingSession
+    * retrying_session
+    * retrying_async_session
+
+    
+Usage:
+
+Example decorator usage:
+
+    ```python
+    @tenacity.retry(**config)
+    def add_user_post(db, user_id, post_values):
+        with db.bind.Session() as session:
+            with session.begin():
+                user = session.scalars(sa.select(User).where(User.id == user_id)).one()
+                post = Post(user=user, **post_values)
+                session.add(post)
+                session.flush()
+                session.refresh(post)
+        return post
+    ```
+
+Example async decorator usage:
+    
+    ```python
+    @tenacity.retry(**config)
+    async def add_user_post(db, user_id, post_values):
+        async_bind = db.get_bind("async")
+        async with async_bind.Session() as session:
+            async with session.begin():
+                user = (await session.scalars(sa.select(User).where(User.id == user_id))).one()
+                post = Post(user=user, **post_values)
+                session.add(post)
+                await session.commit()
+                await session.refresh(post)
+        return post
+    ```
+
+Example context manager usage:
+
+    ```python
+    try:
+        for attempt in tenacity.Retrying(**config):
+            with attempt:
+                with db.bind.Session() as session:
+                    with session.begin():
+                        obj = session.scalars(sa.select(User).where(User.id == 1)).one()
+                        post = Post(title="new post", user=obj)
+                        session.add(Post)
+    except tenacity.RetryError:
+        pass
+    ```
+
+Example async context manager usage:
+
+    ```python
+    async_bind = db.get_bind("async")
+    try:
+        async for attempt in tenacity.AsyncRetrying(**config):
+            with attempt:
+                async with async_bind.Session() as session:
+                    async with session.begin():
+                        obj = (await session.scalars(sa.select(User).where(User.id == 1))).one()
+                        post = Post(title="new post", user=obj)
+                        session.add(Post)
+                        await session.commit()
+    except tenacity.RetryError:
+        pass
+    ```
+
+Check out the docs: https://tenacity.readthedocs.io/en/latest/
+Check out the repo: https://github.com/jd/tenacity
+"""
+
 import logging
 from contextlib import asynccontextmanager
 from contextlib import AsyncExitStack
@@ -22,7 +113,6 @@ _RETRY_ERRORS = (
 )
 
 
-# https://tenacity.readthedocs.io/en/latest/
 retry_config = dict(
     reraise=True,
     retry=tenacity.retry_if_exception_type(_RETRY_ERRORS)

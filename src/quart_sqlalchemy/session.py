@@ -130,6 +130,8 @@ class Session(sa.orm.Session, t.Generic[EntityT, EntityIdT]):
         an order_by clause containing a key unique to the table.  The easiest way to
         achieve the latter is ensure the order_by clause contains the primary_key as
         the last column.
+
+        WARNING: Not yet tested, experimental, use with caution!
         """
         paginator = KeySetPaginator(
             selectable,
@@ -251,6 +253,8 @@ class AsyncSession(sa.ext.asyncio.AsyncSession, t.Generic[EntityT]):
         an order_by clause containing a key unique to the table.  The easiest way to
         achieve the latter is ensure the order_by clause contains the primary_key as
         the last column.
+
+        WARNING: Not yet tested, experimental, use with caution!
         """
         paginator = KeySetPaginator(
             selectable,

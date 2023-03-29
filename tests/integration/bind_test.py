@@ -44,7 +44,7 @@ class TestBindContext(base.ComplexTestBase):
 
 
 class TestTestTransaction(base.ComplexTestBase):
-    def test_test_transaction(self, db: SQLAlchemy, Todo: t.Type[t.Any]):
+    def test_test_transaction_for_orm(self, db: SQLAlchemy, Todo: t.Type[t.Any]):
         with db.bind.test_transaction(savepoint=True) as tx:
             with tx.Session() as s:
                 todo = Todo(title="hello")

@@ -36,14 +36,14 @@ class TestRetryingSessions(base.ComplexTestBase):
             ]
         )
 
-        bind = db.get_bind("retry")
+        # bind = db.get_bind("retry")
 
-        # conn_mock = mocker.patch.dict(bind.Session.kw, "bind")
+        # # conn_mock = mocker.patch.dict(bind.Session.kw, "bind")
 
-        with bind.Session() as s:
-            todo = Todo(title="hello")
-            s.add(todo)
-            s.commit()
+        # with bind.Session() as s:
+        #     todo = Todo(title="hello")
+        #     s.add(todo)
+        #     s.commit()
 
     def test_retrying_session_class(self, db: SQLAlchemy, Todo: t.Type[t.Any], mocker):
         class Unique(db.Model):

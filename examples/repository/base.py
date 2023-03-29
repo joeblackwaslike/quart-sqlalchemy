@@ -9,13 +9,13 @@ import sqlalchemy.event
 import sqlalchemy.exc
 import sqlalchemy.orm
 import sqlalchemy.sql
+from builder import StatementBuilder
 
-from ..types import ColumnExpr
-from ..types import EntityIdT
-from ..types import EntityT
-from ..types import ORMOption
-from ..types import Selectable
-from .statement import StatementBuilder
+from quart_sqlalchemy.types import ColumnExpr
+from quart_sqlalchemy.types import EntityIdT
+from quart_sqlalchemy.types import EntityT
+from quart_sqlalchemy.types import ORMOption
+from quart_sqlalchemy.types import Selectable
 
 
 sa = sqlalchemy

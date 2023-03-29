@@ -9,10 +9,10 @@ import sqlalchemy.orm
 import sqlalchemy.sql
 from sqlalchemy.orm.interfaces import ORMOption
 
-from ..types import ColumnExpr
-from ..types import DMLTable
-from ..types import EntityT
-from ..types import Selectable
+from quart_sqlalchemy.types import ColumnExpr
+from quart_sqlalchemy.types import DMLTable
+from quart_sqlalchemy.types import EntityT
+from quart_sqlalchemy.types import Selectable
 
 
 sa = sqlalchemy
