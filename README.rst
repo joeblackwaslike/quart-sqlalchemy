@@ -24,9 +24,29 @@ Install and update using `pip`_:
 
 .. code-block:: text
 
-  $ pip install pip uninstall -e git+ssh://git@github.com/joeblackwaslike/quart-sqlalchemy.git@ebe5a53bbece0914a178d3be4d1b3e7104b31490#egg=quart_sqlalchemy
+  $ pip install quart-sqlalchemy
 
 .. _pip: https://pip.pypa.io/en/stable/getting-started/
+
+
+Install the latest release with unreleased pytest-asyncio fixes:
+
+.. code-block:: text
+
+  $ pip install git+ssh://git@github.com/joeblackwaslike/quart-sqlalchemy.git#egg=quart_sqlalchemy
+
+Install a wheel from our releases:
+
+.. code-block:: text
+
+  $ pip install https://github.com/joeblackwaslike/quart-sqlalchemy/releases/download/v3.0.1/quart_sqlalchemy-3.0.1-py3-none-any.whl
+
+
+Add to requirements.txt:
+
+.. code-block:: text
+
+    quart-sqlalchemy @ https://github.com/joeblackwaslike/quart-sqlalchemy/releases/download/v3.0.1/quart_sqlalchemy-3.0.1-py3-none-any.whl
 
 
 A Simple Example
