@@ -37,12 +37,6 @@ class APIKeySet(t.NamedTuple):
     secret_key: str
 
 
-def get_session_proxy():
-    from .app import db
-
-    return db.bind.Session()
-
-
 class HandlerBase:
     logic: Logic
     session: Session
@@ -51,7 +45,7 @@ class HandlerBase:
     """
 
     def __init__(self, session: t.Optional[Session], logic: t.Optional[Logic] = None):
-        self.session = session or get_session_proxy()
+        self.session = session
         self.logic = logic or Logic()
 
 
