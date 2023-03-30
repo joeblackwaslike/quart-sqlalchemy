@@ -79,7 +79,7 @@ class SimpleDictMixin:
 class RecursiveDictMixin:
     __abstract__ = True
 
-    def model_to_dict(
+    def to_dict(
         self,
         obj: t.Optional[t.Any] = None,
         max_depth: int = 3,

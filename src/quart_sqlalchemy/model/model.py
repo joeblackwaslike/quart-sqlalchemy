@@ -14,13 +14,14 @@ import typing_extensions as tx
 from .mixins import ComparableMixin
 from .mixins import DynamicArgsMixin
 from .mixins import ReprMixin
+from .mixins import SimpleDictMixin
 from .mixins import TableNameMixin
 
 
 sa = sqlalchemy
 
 
-class Base(DynamicArgsMixin, ReprMixin, ComparableMixin, TableNameMixin):
+class Base(DynamicArgsMixin, ReprMixin, SimpleDictMixin, ComparableMixin, TableNameMixin):
     __abstract__ = True
 
     type_annotation_map = {
