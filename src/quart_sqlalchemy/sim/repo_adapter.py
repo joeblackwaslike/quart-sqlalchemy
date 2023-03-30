@@ -12,7 +12,7 @@ from quart_sqlalchemy.types import EntityT
 from quart_sqlalchemy.types import ORMOption
 from quart_sqlalchemy.types import Selectable
 
-from .repo import SQLAlchemyRepository
+from quart_sqlalchemy.sim.repo import SQLAlchemyRepository
 
 
 class BaseModelSchema(BaseModel):

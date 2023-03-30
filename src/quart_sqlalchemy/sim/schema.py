@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from .util import ObjectID
+from quart_sqlalchemy.sim.util import ObjectID
 
 
 class BaseSchema(BaseModel):

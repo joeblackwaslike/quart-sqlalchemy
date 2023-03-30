@@ -10,14 +10,13 @@ import sqlalchemy.exc
 import sqlalchemy.orm
 import sqlalchemy.sql
 
+from quart_sqlalchemy.sim.builder import StatementBuilder
 from quart_sqlalchemy.types import ColumnExpr
 from quart_sqlalchemy.types import EntityIdT
 from quart_sqlalchemy.types import EntityT
 from quart_sqlalchemy.types import ORMOption
 from quart_sqlalchemy.types import Selectable
 from quart_sqlalchemy.types import SessionT
-
-from .builder import StatementBuilder
 
 
 sa = sqlalchemy
@@ -54,7 +53,6 @@ class AbstractBulkRepository(t.Generic[EntityT, EntityIdT], metaclass=ABCMeta):
     @property
     def identity(self) -> t.Type[EntityIdT]:
         return self.__orig_class__.__args__[1]  # type: ignore
-
 
 
 class SQLAlchemyRepository(

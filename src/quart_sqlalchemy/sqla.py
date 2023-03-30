@@ -38,6 +38,14 @@ class SQLAlchemy:
             class Model(self.config.model_class, sa.orm.DeclarativeBase):
                 pass
 
+        type_annotation_map = {}
+        for base_class in Model.__mro__[::-1]:
+            if base_class is Model:
+                continue
+            base_map = getattr(base_class, "type_annotation_map", {}).copy()
+            type_annotation_map.update(base_map)
+
+        Model.registry.type_annotation_map.update(type_annotation_map)
         self.Model = Model
 
         self.binds = {}

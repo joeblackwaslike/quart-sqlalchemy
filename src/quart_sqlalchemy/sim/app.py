@@ -12,10 +12,10 @@ from quart import Request
 from quart import Response
 from quart_schema import QuartSchema
 
-from .. import Base
-from .. import SQLAlchemyConfig
-from ..framework import QuartSQLAlchemy
-from .util import ObjectID
+from quart_sqlalchemy import Base
+from quart_sqlalchemy import SQLAlchemyConfig
+from quart_sqlalchemy.framework import QuartSQLAlchemy
+from quart_sqlalchemy.sim.util import ObjectID
 
 
 AUTHORIZATION_PATTERN = re.compile(r"Bearer (?P<token>.+)")

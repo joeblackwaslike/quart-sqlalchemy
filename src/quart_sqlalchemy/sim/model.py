@@ -81,8 +81,8 @@ class MagicClient(db.Model, SoftDeleteMixin, TimestampMixin):
     is_signing_modal_enabled: Mapped[bool] = sa.orm.mapped_column(default=False)
     global_audience_enabled: Mapped[bool] = sa.orm.mapped_column(default=False)
 
-    public_api_key: Mapped[str] = sa.orm.mapped_column(default_factory=secrets.token_hex)
-    secret_api_key: Mapped[str] = sa.orm.mapped_column(default_factory=secrets.token_hex)
+    public_api_key: Mapped[str] = sa.orm.mapped_column(default=secrets.token_hex)
+    secret_api_key: Mapped[str] = sa.orm.mapped_column(default=secrets.token_hex)
 
     auth_users: Mapped[t.List["AuthUser"]] = sa.orm.relationship(
         back_populates="magic_client",
@@ -144,7 +144,7 @@ class AuthUser(db.Model, SoftDeleteMixin, TimestampMixin):
 
 
 class AuthWallet(db.Model, SoftDeleteMixin, TimestampMixin):
-    __tablename__ = "auth_user"
+    __tablename__ = "auth_wallet"
 
     id: Mapped[ObjectID] = sa.orm.mapped_column(primary_key=True, autoincrement=True)
     auth_user_id: Mapped[ObjectID] = sa.orm.mapped_column(sa.ForeignKey("auth_user.id"))
