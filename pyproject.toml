@@ -30,6 +30,9 @@ build-backend = "setuptools.build_meta"
 
 
 [project.optional-dependencies]
+sim = [
+    "quart-schema", "hashids"
+]
 tests = [
     "pytest",
     # "pytest-asyncio~=0.20.3",
