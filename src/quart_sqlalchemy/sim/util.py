@@ -30,8 +30,7 @@ class ObjectID:
         elif isinstance(input_value, ObjectID):
             self._source_id = input_value._decoded_id
         elif isinstance(input_value, str):
-            self._source_id = input_value
-            self._decode()
+            self._source_id = self._decode(input_value)
         elif isinstance(input_value, numbers.Number):
             try:
                 input_value = int(input_value)
@@ -47,7 +46,7 @@ class ObjectID:
 
     @property
     def _decoded_id(self):
-        return self._decode()
+        return self._source_id
 
     def __eq__(self, other):
         if isinstance(other, ObjectID):
@@ -88,11 +87,11 @@ class ObjectID:
     def encode(self):
         return self._encoded_id
 
-    def _decode(self):
-        if isinstance(self._source_id, int):
-            return self._source_id
+    def _decode(self, value):
+        if isinstance(value, int):
+            return value
         else:
-            return self.hashids.decode(self._source_id)
+            return self.hashids.decode(value)[0]
 
     def decode(self):
         return self._decoded_id
