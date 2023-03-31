@@ -274,12 +274,12 @@ from .model import Provenance
 )
 @click.option(
     "--client-id",
-    type=int,
+    type=str,
     required=True,
     help="client id",
 )
 @pass_script_info
-def add_user(info: ScriptInfo, email: str, user_type: str, client_id: int) -> None:
+def add_user(info: ScriptInfo, email: str, user_type: str, client_id: str) -> None:
     app = info.load_app()
     db = app.extensions.get("sqlalchemy")
 
