@@ -99,6 +99,7 @@ import sqlalchemy
 import sqlalchemy.exc
 import sqlalchemy.orm
 import tenacity
+from tenacity import RetryError
 
 
 sa = sqlalchemy

@@ -86,28 +86,11 @@ class LogicComponent(metaclass=LogicMeta):
             )
 
 
-def with_db_session(
-    ro: t.Optional[bool] = None,
-    is_stale_tolerant: t.Optional[bool] = None,
-):
-    """Stub decorator to ease transition with legacy code"""
-
-    def wrapper(func):
-        @wraps(func)
-        def inner_wrapper(self, *args, **kwargs):
-            session = None
-            return func(self, None, *args, **kwargs)
-
-        return inner_wrapper
-
-    return wrapper
-
-
 class MagicClient(LogicComponent):
-    def __init__(self, session: Session):
+    def __init__(self):
         # self._repository = SQLAlchemyRepository[magic_client_model, ObjectID](session)
 
-        self._repository = RepositoryLegacyAdapter(magic_client_model, ObjectID, session)
+        self._repository = RepositoryLegacyAdapter(magic_client_model, ObjectID)
 
     def _add(self, session, app_name=None):
         return self._repository.add(
@@ -115,9 +98,10 @@ class MagicClient(LogicComponent):
             app_name=app_name,
         )
 
-    add = with_db_session(ro=False)(_add)
+    # add = with_db_session(ro=False)(_add)
+    add = _add
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_by_id(
         self,
         session,
@@ -132,7 +116,7 @@ class MagicClient(LogicComponent):
             join_list=join_list,
         )
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_by_public_api_key(
         self,
         session,
@@ -163,17 +147,17 @@ class MagicClient(LogicComponent):
 
     #     return client.magic_client_api_user.magic_api_user_id
 
-    @with_db_session(ro=False)
+    # @with_db_session(ro=False)
     def update_by_id(self, session, model_id, **update_params):
         modified_row = self._repository.update(session, model_id, **update_params)
         session.refresh(modified_row)
         return modified_row
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def yield_all_clients_by_chunk(self, session, chunk_size):
         yield from self._repository.yield_by_chunk(session, chunk_size)
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def yield_by_chunk(self, session, chunk_size, filters=None, join_list=None):
         yield from self._repository.yield_by_chunk(
             session,
@@ -200,11 +184,11 @@ class MissingPhoneNumber(Exception):
 
 
 class AuthUser(LogicComponent):
-    def __init__(self, session: Session):
+    def __init__(self):
         # self._repository = SQLRepository(auth_user_model)
-        self._repository = RepositoryLegacyAdapter(magic_client_model, ObjectID, session)
+        self._repository = RepositoryLegacyAdapter(magic_client_model, ObjectID)
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_by_session_token(
         self,
         session,
@@ -254,9 +238,10 @@ class AuthUser(LogicComponent):
 
         return row
 
-    get_or_add_by_phone_number_and_client_id = with_db_session(ro=False)(
-        _get_or_add_by_phone_number_and_client_id,
-    )
+    # get_or_add_by_phone_number_and_client_id = with_db_session(ro=False)(
+    #     _get_or_add_by_phone_number_and_client_id,
+    # )
+    get_or_add_by_phone_number_and_client_id = _get_or_add_by_phone_number_and_client_id
 
     def _add_by_email_and_client_id(
         self,
@@ -299,7 +284,8 @@ class AuthUser(LogicComponent):
 
         return row
 
-    add_by_email_and_client_id = with_db_session(ro=False)(_add_by_email_and_client_id)
+    # add_by_email_and_client_id = with_db_session(ro=False)(_add_by_email_and_client_id)
+    add_by_email_and_client_id = _add_by_email_and_client_id
 
     def _add_by_client_id(
         self,
@@ -327,7 +313,8 @@ class AuthUser(LogicComponent):
 
         return row
 
-    add_by_client_id = with_db_session(ro=False)(_add_by_client_id)
+    # add_by_client_id = with_db_session(ro=False)(_add_by_client_id)
+    add_by_client_id = _add_by_client_id
 
     def _get_by_active_identifier_and_client_id(
         self,
@@ -364,7 +351,7 @@ class AuthUser(LogicComponent):
 
         return original
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_by_email_and_client_id(
         self,
         session,
@@ -398,9 +385,10 @@ class AuthUser(LogicComponent):
             user_type=user_type,
         )
 
-    get_by_phone_number_and_client_id = with_db_session(ro=True)(
-        _get_by_phone_number_and_client_id,
-    )
+    # get_by_phone_number_and_client_id = with_db_session(ro=True)(
+    #     _get_by_phone_number_and_client_id,
+    # )
+    get_by_phone_number_and_client_id = _get_by_phone_number_and_client_id
 
     def _exist_by_email_and_client_id(
         self,
@@ -420,7 +408,8 @@ class AuthUser(LogicComponent):
             ),
         )
 
-    exist_by_email_and_client_id = with_db_session(ro=True)(_exist_by_email_and_client_id)
+    # exist_by_email_and_client_id = with_db_session(ro=True)(_exist_by_email_and_client_id)
+    exist_by_email_and_client_id = _exist_by_email_and_client_id
 
     def _get_by_id(self, session, model_id, join_list=None, for_update=False) -> auth_user_model:
         return self._repository.get_by_id(
@@ -430,7 +419,8 @@ class AuthUser(LogicComponent):
             for_update=for_update,
         )
 
-    get_by_id = with_db_session(ro=True)(_get_by_id)
+    get_by_id = _get_by_id
+    # get_by_id = with_db_session(ro=True)(_get_by_id)
 
     def _update_by_id(self, session, auth_user_id, **kwargs):
         modified_user = self._repository.update(session, auth_user_id, **kwargs)
@@ -440,9 +430,10 @@ class AuthUser(LogicComponent):
 
         return modified_user
 
-    update_by_id = with_db_session(ro=False)(_update_by_id)
+    # update_by_id = with_db_session(ro=False)(_update_by_id)
+    update_by_id = _update_by_id
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_user_count_by_client_id_and_user_type(self, session, client_id, user_type):
         query = (
             session.query(auth_user_model)
@@ -469,9 +460,10 @@ class AuthUser(LogicComponent):
             ],
         )
 
-    get_by_client_id_and_global_auth_user = with_db_session(ro=True)(
-        _get_by_client_id_and_global_auth_user,
-    )
+    # get_by_client_id_and_global_auth_user = with_db_session(ro=True)(
+    #     _get_by_client_id_and_global_auth_user,
+    # )
+    get_by_client_id_and_global_auth_user = _get_by_client_id_and_global_auth_user
 
     # @with_db_session(ro=True)
     # def get_by_client_id_for_connect(
@@ -542,7 +534,7 @@ class AuthUser(LogicComponent):
 
     #     return session.execute(query).scalar()
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_by_client_id_and_user_type(
         self,
         session,
@@ -583,9 +575,10 @@ class AuthUser(LogicComponent):
             order_by_clause=auth_user_model.id.desc(),
         )
 
-    get_by_client_ids_and_user_type = with_db_session(ro=True)(
-        _get_by_client_ids_and_user_type,
-    )
+    # get_by_client_ids_and_user_type = with_db_session(ro=True)(
+    #     _get_by_client_ids_and_user_type,
+    # )
+    get_by_client_ids_and_user_type = _get_by_client_ids_and_user_type
 
     def _get_by_client_id_with_substring_search(
         self,
@@ -617,11 +610,12 @@ class AuthUser(LogicComponent):
             join_list=join_list,
         )
 
-    get_by_client_id_with_substring_search = with_db_session(ro=True)(
-        _get_by_client_id_with_substring_search,
-    )
+    # get_by_client_id_with_substring_search = with_db_session(ro=True)(
+    #     _get_by_client_id_with_substring_search,
+    # )
+    get_by_client_id_with_substring_search = _get_by_client_id_with_substring_search
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def yield_by_chunk(self, session, chunk_size, filters=None, join_list=None):
         yield from self._repository.yield_by_chunk(
             session,
@@ -630,7 +624,7 @@ class AuthUser(LogicComponent):
             join_list=join_list,
         )
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_by_emails_and_client_id(
         self,
         session,
@@ -663,12 +657,14 @@ class AuthUser(LogicComponent):
             join_list=join_list,
         )
 
-    get_by_email = with_db_session(ro=True)(_get_by_email)
+    # get_by_email = with_db_session(ro=True)(_get_by_email)
+    get_by_email = _get_by_email
 
     def _add(self, session, **kwargs) -> ObjectID:
         return self._repository.add(session, **kwargs).id
 
-    add = with_db_session(ro=False)(_add)
+    # add = with_db_session(ro=False)(_add)
+    add = _add
 
     def _get_by_email_for_interop(
         self,
@@ -676,7 +672,7 @@ class AuthUser(LogicComponent):
         email: str,
         wallet_type: WalletType,
         network: str,
-    ) -> List[auth_user_model]:
+    ) -> t.List[auth_user_model]:
         """
         Custom method for searching for users eligible for interop. Unfortunately, this can't be done with the current
         abstractions in our sql_repository, so this is a one-off bespoke method.
@@ -720,9 +716,10 @@ class AuthUser(LogicComponent):
 
         return query.all()
 
-    get_by_email_for_interop = with_db_session(ro=True)(
-        _get_by_email_for_interop,
-    )
+    # get_by_email_for_interop = with_db_session(ro=True)(
+    #     _get_by_email_for_interop,
+    # )
+    get_by_email_for_interop = _get_by_email_for_interop
 
     def _get_linked_users(self, session, primary_auth_user_id, join_list, no_op=False):
         # TODO(magic-ravi#67899|2022-12-30): Re-enable account linked users for interop. Remove no_op flag.
@@ -739,9 +736,10 @@ class AuthUser(LogicComponent):
                 join_list=join_list,
             )
 
-    get_linked_users = with_db_session(ro=True)(_get_linked_users)
+    # get_linked_users = with_db_session(ro=True)(_get_linked_users)
+    get_linked_users = _get_linked_users
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_by_phone_number(self, session, phone_number):
         return self._repository.get_by(
             session,
@@ -752,9 +750,9 @@ class AuthUser(LogicComponent):
 
 
 class AuthWallet(LogicComponent):
-    def __init__(self, session: Session):
+    def __init__(self):
         # self._repository = SQLAlchemyRepository[magic_client_model, ObjectID](session)
-        self._repository = RepositoryLegacyAdapter(auth_wallet_model, ObjectID, session)
+        self._repository = RepositoryLegacyAdapter(auth_wallet_model, ObjectID)
 
     def _add(
         self,
@@ -778,9 +776,10 @@ class AuthWallet(LogicComponent):
 
         return new_row
 
-    add = with_db_session(ro=False)(_add)
+    # add = with_db_session(ro=False)(_add)
+    add = _add
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_by_id(self, session, model_id, allow_inactive=False, join_list=None):
         return self._repository.get_by_id(
             session,
@@ -789,7 +788,7 @@ class AuthWallet(LogicComponent):
             join_list=join_list,
         )
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_by_public_address(self, session, public_address, network=None, is_active=True):
         """Public address is unique in our system. In any case, we should only
         find one row for the given public address.
@@ -819,7 +818,7 @@ class AuthWallet(LogicComponent):
 
         return one(row)
 
-    @with_db_session(ro=True)
+    # @with_db_session(ro=True)
     def get_by_auth_user_id(
         self,
         session,
@@ -866,4 +865,5 @@ class AuthWallet(LogicComponent):
     def _update_by_id(self, session, model_id, **kwargs):
         self._repository.update(session, model_id, **kwargs)
 
-    update_by_id = with_db_session(ro=False)(_update_by_id)
+    # update_by_id = with_db_session(ro=False)(_update_by_id)
+    update_by_id = _update_by_id

@@ -1,8 +1,7 @@
-from quart_sqlalchemy.sim.app import app
-from quart_sqlalchemy.sim.views import api
+from quart_sqlalchemy.sim.app import create_app
 
 
-app.register_blueprint(api, url_prefix="/v1")
+app = create_app()
 
 
 if __name__ == "__main__":

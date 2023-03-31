@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import typing as t
 from abc import ABCMeta
-from abc import abstractmethod
 
 import sqlalchemy
 import sqlalchemy.event
@@ -17,6 +16,9 @@ from quart_sqlalchemy.types import EntityT
 from quart_sqlalchemy.types import ORMOption
 from quart_sqlalchemy.types import Selectable
 from quart_sqlalchemy.types import SessionT
+
+
+# from abc import abstractmethod
 
 
 sa = sqlalchemy
@@ -81,47 +83,54 @@ class SQLAlchemyRepository(
 
     """
 
-    session: sa.orm.Session
+    # session: sa.orm.Session
     builder: StatementBuilder
 
-    def __init__(self, session: sa.orm.Session, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.session = session
+        # self.session = session
         self.builder = StatementBuilder(None)
 
-    def insert(self, values: t.Dict[str, t.Any]) -> EntityT:
+    def insert(self, session: sa.orm.Session, values: t.Dict[str, t.Any]) -> EntityT:
         """Insert a new model into the database."""
         new = self.model(**values)
-        self.session.add(new)
-        self.session.flush()
-        self.session.refresh(new)
+        session.add(new)
+        session.flush()
+        session.refresh(new)
         return new
 
-    def update(self, id_: EntityIdT, values: t.Dict[str, t.Any]) -> EntityT:
+    def update(
+        self, session: sa.orm.Session, id_: EntityIdT, values: t.Dict[str, t.Any]
+    ) -> EntityT:
         """Update existing model with new values."""
-        obj = self.session.get(self.model, id_)
+        obj = session.get(self.model, id_)
         if obj is None:
             raise ValueError(f"Object with id {id_} not found")
         for field, value in values.items():
             if getattr(obj, field) != value:
                 setattr(obj, field, value)
-        self.session.flush()
-        self.session.refresh(obj)
+        session.flush()
+        session.refresh(obj)
         return obj
 
     def merge(
-        self, id_: EntityIdT, values: t.Dict[str, t.Any], for_update: bool = False
+        self,
+        session: sa.orm.Session,
+        id_: EntityIdT,
+        values: t.Dict[str, t.Any],
+        for_update: bool = False,
     ) -> EntityT:
         """Merge model in session/db having id_ with values."""
-        self.session.get(self.model, id_)
+        session.get(self.model, id_)
         values.update(id=id_)
-        merged = self.session.merge(self.model(**values))
-        self.session.flush()
-        self.session.refresh(merged, with_for_update=for_update)  # type: ignore
+        merged = session.merge(self.model(**values))
+        session.flush()
+        session.refresh(merged, with_for_update=for_update)  # type: ignore
         return merged
 
     def get(
         self,
+        session: sa.orm.Session,
         id_: EntityIdT,
         options: t.Sequence[ORMOption] = (),
         execution_options: t.Optional[t.Dict[str, t.Any]] = None,
@@ -137,7 +146,7 @@ class SQLAlchemyRepository(
         present it will be returned directly, when not, a database lookup will be performed.
 
         For use cases where this is what you actually want, you can still access the original get
-        method on self.session.  For most uses cases, this behavior can introduce non-determinism
+        method on session.  For most uses cases, this behavior can introduce non-determinism
         and because of that this method performs lookup using a select statement.  Additionally,
         to satisfy the expected interface's return type: Optional[EntityT], one_or_none is called
         on the result before returning.
@@ -154,10 +163,11 @@ class SQLAlchemyRepository(
         if for_update:
             statement = statement.with_for_update()
 
-        return self.session.scalars(statement, execution_options=execution_options).one_or_none()
+        return session.scalars(statement, execution_options=execution_options).one_or_none()
 
     def select(
         self,
+        session: sa.orm.Session,
         selectables: t.Sequence[Selectable] = (),
         conditions: t.Sequence[ColumnExpr] = (),
         group_by: t.Sequence[t.Union[ColumnExpr, str]] = (),
@@ -196,12 +206,14 @@ class SQLAlchemyRepository(
             for_update=for_update,
         )
 
-        results = self.session.scalars(statement)
+        results = session.scalars(statement)
         if yield_by_chunk:
             results = results.partitions()
         return results
 
-    def delete(self, id_: EntityIdT, include_inactive: bool = False) -> None:
+    def delete(
+        self, session: sa.orm.Session, id_: EntityIdT, include_inactive: bool = False
+    ) -> None:
         # if self.has_soft_delete:
         #     raise RuntimeError("Can't delete entity that uses soft-delete semantics.")
 
@@ -209,16 +221,16 @@ class SQLAlchemyRepository(
         if not entity:
             raise RuntimeError(f"Entity with id {id_} not found.")
 
-        self.session.delete(entity)
-        self.session.flush()
+        session.delete(entity)
+        session.flush()
 
-    def deactivate(self, id_: EntityIdT) -> EntityT:
+    def deactivate(self, session: sa.orm.Session, id_: EntityIdT) -> EntityT:
         # if not self.has_soft_delete:
         #     raise RuntimeError("Can't delete entity that uses soft-delete semantics.")
 
         return self.update(id_, dict(is_active=False))
 
-    def reactivate(self, id_: EntityIdT) -> EntityT:
+    def reactivate(self, session: sa.orm.Session, id_: EntityIdT) -> EntityT:
         # if not self.has_soft_delete:
         #     raise RuntimeError("Can't delete entity that uses soft-delete semantics.")
 
@@ -226,6 +238,7 @@ class SQLAlchemyRepository(
 
     def exists(
         self,
+        session: sa.orm.Session,
         conditions: t.Sequence[ColumnExpr] = (),
         for_update: bool = False,
         include_inactive: bool = False,
@@ -246,38 +259,41 @@ class SQLAlchemyRepository(
         if for_update:
             statement = statement.with_for_update()
 
-        result = self.session.execute(statement, execution_options=execution_options).scalar()
+        result = session.execute(statement, execution_options=execution_options).scalar()
 
         return bool(result)
 
 
 class SQLAlchemyBulkRepository(AbstractBulkRepository, t.Generic[SessionT, EntityT, EntityIdT]):
-    def __init__(self, session: SessionT, **kwargs: t.Any):
+    def __init__(self, **kwargs: t.Any):
         super().__init__(**kwargs)
         self.builder = StatementBuilder(self.model)
-        self.session = session
+        # session = session
 
     def bulk_insert(
         self,
+        session: sa.orm.Session,
         values: t.Sequence[t.Dict[str, t.Any]] = (),
         execution_options: t.Optional[t.Dict[str, t.Any]] = None,
     ) -> sa.Result[t.Any]:
         statement = self.builder.bulk_insert(self.model, values)
-        return self.session.execute(statement, execution_options=execution_options or {})
+        return session.execute(statement, execution_options=execution_options or {})
 
     def bulk_update(
         self,
+        session: sa.orm.Session,
         conditions: t.Sequence[ColumnExpr] = (),
         values: t.Optional[t.Dict[str, t.Any]] = None,
         execution_options: t.Optional[t.Dict[str, t.Any]] = None,
     ) -> sa.Result[t.Any]:
         statement = self.builder.bulk_update(self.model, conditions, values)
-        return self.session.execute(statement, execution_options=execution_options or {})
+        return session.execute(statement, execution_options=execution_options or {})
 
     def bulk_delete(
         self,
+        session: sa.orm.Session,
         conditions: t.Sequence[ColumnExpr] = (),
         execution_options: t.Optional[t.Dict[str, t.Any]] = None,
     ) -> sa.Result[t.Any]:
         statement = self.builder.bulk_delete(self.model, conditions)
-        return self.session.execute(statement, execution_options=execution_options or {})
+        return session.execute(statement, execution_options=execution_options or {})

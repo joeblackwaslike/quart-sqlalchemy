@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped
 
 from quart_sqlalchemy.model import SoftDeleteMixin
 from quart_sqlalchemy.model import TimestampMixin
-from quart_sqlalchemy.sim.app import db
+from quart_sqlalchemy.sim.db import db
 from quart_sqlalchemy.sim.util import ObjectID
 
 
@@ -100,8 +100,10 @@ class AuthUser(db.Model, SoftDeleteMixin, TimestampMixin):
     date_verified: Mapped[t.Optional[datetime]]
     provenance: Mapped[t.Optional[Provenance]]
     is_admin: Mapped[bool] = sa.orm.mapped_column(default=False)
-    client_id: Mapped[ObjectID]
-    linked_primary_auth_user_id: Mapped[t.Optional[ObjectID]]
+    client_id: Mapped[ObjectID] = sa.orm.mapped_column(sa.ForeignKey("magic_client.id"))
+    linked_primary_auth_user_id: Mapped[t.Optional[ObjectID]] = sa.orm.mapped_column(
+        sa.ForeignKey("auth_user.id"), default=None
+    )
     global_auth_user_id: Mapped[t.Optional[ObjectID]]
 
     delegated_user_id: Mapped[t.Optional[str]]
@@ -110,7 +112,7 @@ class AuthUser(db.Model, SoftDeleteMixin, TimestampMixin):
     current_session_token: Mapped[t.Optional[str]]
 
     magic_client: Mapped[MagicClient] = sa.orm.relationship(
-        back_populates="auth_user",
+        back_populates="auth_users",
         uselist=False,
     )
     linked_primary_auth_user = sa.orm.relationship(
@@ -158,6 +160,6 @@ class AuthWallet(db.Model, SoftDeleteMixin, TimestampMixin):
     is_exported: Mapped[bool] = sa.orm.mapped_column(default=False)
 
     auth_user: Mapped[AuthUser] = sa.orm.relationship(
-        back_populates="auth_wallets",
+        back_populates="wallets",
         uselist=False,
     )
