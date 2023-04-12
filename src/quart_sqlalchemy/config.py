@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import types
 import typing as t
@@ -11,6 +10,7 @@ import sqlalchemy.exc
 import sqlalchemy.ext
 import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
+import sqlalchemy.sql.sqltypes
 import sqlalchemy.util
 import typing_extensions as tx
 from pydantic import BaseModel
@@ -22,6 +22,8 @@ from sqlalchemy.sql.compiler import Compiled
 from .model import Base
 from .types import BoundParamStyle
 from .types import DMLStrategy
+from .types import Empty
+from .types import EmptyType
 from .types import SessionBind
 from .types import SessionBindKey
 from .types import SynchronizeSession
@@ -63,9 +65,9 @@ class ConfigBase(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    @classmethod
-    def default(cls):
-        return cls()
+    @root_validator
+    def scrub_empty(cls, values):
+        return {key: val for key, val in values.items() if val not in [Empty, {}]}
 
 
 class CoreExecutionOptions(ConfigBase):
@@ -73,15 +75,15 @@ class CoreExecutionOptions(ConfigBase):
     https://docs.sqlalchemy.org/en/20/core/connections.html#sqlalchemy.engine.Connection.execution_options
     """
 
-    isolation_level: t.Optional[TransactionIsolationLevel] = None
-    compiled_cache: t.Optional[t.Dict[t.Any, Compiled]] = Field(default_factory=dict)
-    logging_token: t.Optional[str] = None
-    no_parameters: bool = False
-    stream_results: bool = False
-    max_row_buffer: int = 1000
-    yield_per: t.Optional[int] = None
-    insertmanyvalues_page_size: int = 1000
-    schema_translate_map: t.Optional[t.Dict[str, str]] = None
+    isolation_level: t.Union[TransactionIsolationLevel, EmptyType] = Empty
+    compiled_cache: t.Union[t.Dict[t.Any, Compiled], None, EmptyType] = Empty
+    logging_token: t.Union[str, None, EmptyType] = Empty
+    no_parameters: t.Union[bool, EmptyType] = Empty
+    stream_results: t.Union[bool, EmptyType] = Empty
+    max_row_buffer: t.Union[int, EmptyType] = Empty
+    yield_per: t.Union[int, None, EmptyType] = Empty
+    insertmanyvalues_page_size: t.Union[int, EmptyType] = Empty
+    schema_translate_map: t.Union[t.Dict[str, str], None, EmptyType] = Empty
 
 
 class ORMExecutionOptions(ConfigBase):
@@ -89,14 +91,21 @@ class ORMExecutionOptions(ConfigBase):
     https://docs.sqlalchemy.org/en/20/orm/queryguide/api.html#orm-queryguide-execution-options
     """
 
-    isolation_level: t.Optional[TransactionIsolationLevel] = None
-    stream_results: bool = False
-    yield_per: t.Optional[int] = None
-    populate_existing: bool = False
-    autoflush: bool = True
-    identity_token: t.Optional[str] = None
-    synchronize_session: SynchronizeSession = "auto"
-    dml_strategy: DMLStrategy = "auto"
+    isolation_level: t.Union[TransactionIsolationLevel, EmptyType] = Empty
+    stream_results: t.Union[bool, EmptyType] = Empty
+    yield_per: t.Union[int, None, EmptyType] = Empty
+    populate_existing: t.Union[bool, EmptyType] = Empty
+    autoflush: t.Union[bool, EmptyType] = Empty
+    identity_token: t.Union[str, None, EmptyType] = Empty
+    synchronize_session: t.Union[SynchronizeSession, None, EmptyType] = Empty
+    dml_strategy: t.Union[DMLStrategy, None, EmptyType] = Empty
+
+
+# connect_args:
+#   mysql:
+#     connect_timeout:
+#   postgres:
+#     connect_timeout:
 
 
 class EngineConfig(ConfigBase):
@@ -104,42 +113,55 @@ class EngineConfig(ConfigBase):
     https://docs.sqlalchemy.org/en/20/core/engines.html#sqlalchemy.create_engine
     """
 
-    url: t.Union[sa.URL, str] = "sqlite://"
-    echo: bool = False
-    echo_pool: bool = False
-    connect_args: t.Dict[str, t.Any] = Field(default_factory=dict)
+    url: t.Union[sa.URL, str, EmptyType] = Empty
+    echo: t.Union[bool, EmptyType] = Empty
+    echo_pool: t.Union[bool, EmptyType] = Empty
+    connect_args: t.Union[t.Dict[str, t.Any], EmptyType] = Empty
     execution_options: CoreExecutionOptions = Field(default_factory=CoreExecutionOptions)
-    enable_from_linting: bool = True
-    hide_parameters: bool = False
-    insertmanyvalues_page_size: int = 1000
-    isolation_level: t.Optional[TransactionIsolationLevel] = None
-    json_deserializer: t.Callable[[str], t.Any] = json.loads
-    json_serializer: t.Callable[[t.Any], str] = json.dumps
-    label_length: t.Optional[int] = None
-    logging_name: t.Optional[str] = None
-    max_identifier_length: t.Optional[int] = None
-    max_overflow: int = 10
-    module: t.Optional[types.ModuleType] = None
-    paramstyle: t.Optional[BoundParamStyle] = None
-    pool: t.Optional[sa.Pool] = None
-    poolclass: t.Optional[t.Type[sa.Pool]] = None
-    pool_logging_name: t.Optional[str] = None
-    pool_pre_ping: bool = False
-    pool_size: int = 5
-    pool_recycle: int = -1
-    pool_reset_on_return: t.Optional[tx.Literal["values", "rollback"]] = None
-    pool_timeout: int = 40
-    pool_use_lifo: bool = False
-    plugins: t.Sequence[str] = Field(default_factory=list)
-    query_cache_size: int = 500
-    user_insertmanyvalues: bool = True
+    enable_from_linting: t.Union[bool, EmptyType] = Empty
+    hide_parameters: t.Union[bool, EmptyType] = Empty
+    insertmanyvalues_page_size: t.Union[int, EmptyType] = Empty
+    isolation_level: t.Union[TransactionIsolationLevel, EmptyType] = Empty
+    json_deserializer: t.Union[t.Callable[[str], t.Any], EmptyType] = Empty
+    json_serializer: t.Union[t.Callable[[t.Any], str], EmptyType] = Empty
+    label_length: t.Union[int, None, EmptyType] = Empty
+    logging_name: t.Union[str, None, EmptyType] = Empty
+    max_identifier_length: t.Union[int, None, EmptyType] = Empty
+    max_overflow: t.Union[int, EmptyType] = Empty
+    module: t.Union[types.ModuleType, None, EmptyType] = Empty
+    paramstyle: t.Union[BoundParamStyle, None, EmptyType] = Empty
+    pool: t.Union[sa.Pool, None, EmptyType] = Empty
+    poolclass: t.Union[t.Type[sa.Pool], None, EmptyType] = Empty
+    pool_logging_name: t.Union[str, None, EmptyType] = Empty
+    pool_pre_ping: t.Union[bool, EmptyType] = Empty
+    pool_size: t.Union[int, EmptyType] = Empty
+    pool_recycle: t.Union[int, EmptyType] = Empty
+    pool_reset_on_return: t.Union[tx.Literal["values", "rollback"], None, EmptyType] = Empty
+    pool_timeout: t.Union[int, EmptyType] = Empty
+    pool_use_lifo: t.Union[bool, EmptyType] = Empty
+    plugins: t.Union[t.Sequence[str], EmptyType] = Empty
+    query_cache_size: t.Union[int, EmptyType] = Empty
+    user_insertmanyvalues: t.Union[bool, EmptyType] = Empty
 
-    @classmethod
-    def default(cls):
-        return cls(url="sqlite://")
+    @root_validator
+    def scrub_execution_options(cls, values):
+        if "execution_options" in values:
+            execute_options = values["execution_options"].dict(exclude_defaults=True)
+            if execute_options:
+                values["execution_options"] = execute_options
+        return values
+
+    @root_validator
+    def set_defaults(cls, values):
+        values.setdefault("url", "sqlite://")
+        return values
 
     @root_validator
     def apply_driver_defaults(cls, values):
+        # values["execution_options"] = values["execution_options"].dict(exclude_defaults=True)
+        # values = {key: val for key, val in values.items() if val not in [Empty, {}]}
+        # values.setdefault("url", "sqlite://")
+
         url = sa.make_url(values["url"])
         driver = url.drivername
 
@@ -177,19 +199,31 @@ class EngineConfig(ConfigBase):
         return values
 
 
+class AsyncEngineConfig(EngineConfig):
+    @root_validator
+    def set_defaults(cls, values):
+        values.setdefault("url", "sqlite+aiosqlite://")
+        return values
+
+
 class SessionOptions(ConfigBase):
     """
     https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session
     """
 
-    autoflush: bool = True
-    autobegin: bool = True
-    expire_on_commit: bool = False
-    bind: t.Optional[SessionBind] = None
-    binds: t.Optional[t.Dict[SessionBindKey, SessionBind]] = None
-    twophase: bool = False
-    info: t.Optional[t.Dict[t.Any, t.Any]] = None
-    join_transaction_mode: JoinTransactionMode = "conditional_savepoint"
+    autoflush: t.Union[bool, EmptyType] = Empty
+    autobegin: t.Union[bool, EmptyType] = Empty
+    expire_on_commit: t.Union[bool, EmptyType] = Empty
+    bind: t.Union[SessionBind, None, EmptyType] = Empty
+    binds: t.Union[t.Dict[SessionBindKey, SessionBind], None, EmptyType] = Empty
+    twophase: t.Union[bool, EmptyType] = Empty
+    info: t.Union[t.Dict[t.Any, t.Any], None, EmptyType] = Empty
+    join_transaction_mode: t.Union[JoinTransactionMode, EmptyType] = Empty
+
+    @root_validator
+    def set_defaults(cls, values):
+        values.setdefault("expire_on_commit", False)
+        return values
 
 
 class SessionmakerOptions(SessionOptions):
@@ -197,7 +231,7 @@ class SessionmakerOptions(SessionOptions):
     https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.sessionmaker
     """
 
-    class_: t.Type[sa.orm.Session] = sa.orm.Session
+    class_: t.Union[t.Type[sa.orm.Session], EmptyType] = Empty
 
 
 class AsyncSessionOptions(SessionOptions):
@@ -205,7 +239,7 @@ class AsyncSessionOptions(SessionOptions):
     https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#sqlalchemy.ext.asyncio.AsyncSession
     """
 
-    sync_session_class: t.Type[sa.orm.Session] = sa.orm.Session
+    sync_session_class: t.Union[t.Type[sa.orm.Session], EmptyType] = Empty
 
 
 class AsyncSessionmakerOptions(AsyncSessionOptions):
@@ -213,13 +247,14 @@ class AsyncSessionmakerOptions(AsyncSessionOptions):
     https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#sqlalchemy.ext.asyncio.async_sessionmaker
     """
 
-    class_: t.Type[sa.ext.asyncio.AsyncSession] = sa.ext.asyncio.AsyncSession
+    class_: t.Union[t.Type[sa.ext.asyncio.AsyncSession], EmptyType] = Empty
 
 
 class BindConfig(ConfigBase):
     read_only: bool = False
-    session: SessionmakerOptions = Field(default_factory=SessionmakerOptions.default)
-    engine: EngineConfig = Field(default_factory=EngineConfig.default)
+    session: SessionmakerOptions = Field(default_factory=SessionmakerOptions)
+    engine: EngineConfig = Field(default_factory=EngineConfig)
+    track_instance: bool = False
 
     @root_validator
     def validate_dialect(cls, values):
@@ -227,30 +262,24 @@ class BindConfig(ConfigBase):
 
 
 class AsyncBindConfig(BindConfig):
-    session: AsyncSessionmakerOptions = Field(default_factory=AsyncSessionmakerOptions.default)
+    session: AsyncSessionmakerOptions = Field(default_factory=AsyncSessionmakerOptions)
+    engine: AsyncEngineConfig = Field(default_factory=AsyncEngineConfig)
 
     @root_validator
     def validate_dialect(cls, values):
         return validate_dialect(cls, values, "async")
 
 
-def default():
-    dict(default=dict())
-
-
 class SQLAlchemyConfig(ConfigBase):
-    class Meta:
-        web_config_field_map = {
-            "SQLALCHEMY_MODEL_CLASS": "model_class",
-            "SQLALCHEMY_BINDS": "binds",
-        }
+    base_class: t.Type[t.Any] = Base
+    binds: t.Dict[str, t.Union[BindConfig, AsyncBindConfig]] = Field(default_factory=dict)
 
-    model_class: t.Type[t.Any] = Base
-    binds: t.Dict[str, t.Union[AsyncBindConfig, BindConfig]] = Field(
-        default_factory=lambda: dict(default=BindConfig())
-    )
+    @root_validator
+    def set_default_bind(cls, values):
+        values.setdefault("binds", dict(default=BindConfig()))
+        return values
 
     @classmethod
-    def from_framework(cls, values: t.Dict[str, t.Any]):
-        key_map = cls.Meta.web_config_field_map
-        return cls(**{key_map.get(key, key): val for key, val in values.items()})
+    def from_framework(cls, framework_config):
+        config = framework_config.get_namespace("SQLALCHEMY_")
+        return cls.parse_obj(config or {})

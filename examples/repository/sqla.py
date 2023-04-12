@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import operator
 import typing as t
 
 import sqlalchemy
@@ -15,6 +16,7 @@ from base import AbstractRepository
 from quart_sqlalchemy.types import ColumnExpr
 from quart_sqlalchemy.types import EntityIdT
 from quart_sqlalchemy.types import EntityT
+from quart_sqlalchemy.types import Operator
 from quart_sqlalchemy.types import ORMOption
 from quart_sqlalchemy.types import Selectable
 from quart_sqlalchemy.types import SessionT
@@ -25,8 +27,8 @@ sa = sqlalchemy
 
 class SQLAlchemyRepository(
     TableMetadataMixin,
-    AbstractRepository[EntityT, EntityIdT],
-    t.Generic[EntityT, EntityIdT],
+    AbstractRepository[EntityT, EntityIdT, SessionT],
+    t.Generic[EntityT, EntityIdT, SessionT],
 ):
     """A repository that uses SQLAlchemy to persist data.
 
@@ -53,7 +55,7 @@ class SQLAlchemyRepository(
     session: sa.orm.Session
     builder: StatementBuilder
 
-    def __init__(self, session: sa.orm.Session, **kwargs):
+    def __init__(self, model: sa.orm.Session, **kwargs):
         super().__init__(**kwargs)
         self.session = session
         self.builder = StatementBuilder(None)
@@ -124,6 +126,46 @@ class SQLAlchemyRepository(
             statement = statement.with_for_update()
 
         return self.session.scalars(statement, execution_options=execution_options).one_or_none()
+
+    def get_by_field(
+        self,
+        field: t.Union[ColumnExpr, str],
+        value: t.Any,
+        op: Operator = operator.eq,
+        order_by: t.Sequence[t.Union[ColumnExpr, str]] = (),
+        options: t.Sequence[ORMOption] = (),
+        execution_options: t.Optional[t.Dict[str, t.Any]] = None,
+        offset: t.Optional[int] = None,
+        limit: t.Optional[int] = None,
+        distinct: bool = False,
+        for_update: bool = False,
+        include_inactive: bool = False,
+    ) -> sa.ScalarResult[EntityT]:
+        """Select models where field is equal to value."""
+        selectables = (self.model,)  # type: ignore
+
+        execution_options = execution_options or {}
+        if include_inactive:
+            execution_options.setdefault("include_inactive", include_inactive)
+
+        if isinstance(field, str):
+            field = getattr(self.model, field)
+
+        conditions = [t.cast(ColumnExpr, op(field, value))]
+
+        statement = self.builder.complex_select(
+            selectables,
+            conditions=conditions,
+            order_by=order_by,
+            options=options,
+            execution_options=execution_options,
+            offset=offset,
+            limit=limit,
+            distinct=distinct,
+            for_update=for_update,
+        )
+
+        return self.session.scalars(statement)
 
     def select(
         self,

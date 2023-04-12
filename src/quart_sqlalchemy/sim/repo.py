@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import operator
 import typing as t
 from abc import ABCMeta
 
@@ -13,53 +14,35 @@ from quart_sqlalchemy.sim.builder import StatementBuilder
 from quart_sqlalchemy.types import ColumnExpr
 from quart_sqlalchemy.types import EntityIdT
 from quart_sqlalchemy.types import EntityT
+from quart_sqlalchemy.types import Operator
 from quart_sqlalchemy.types import ORMOption
 from quart_sqlalchemy.types import Selectable
 from quart_sqlalchemy.types import SessionT
 
 
-# from abc import abstractmethod
-
-
 sa = sqlalchemy
 
 
-class AbstractRepository(t.Generic[EntityT, EntityIdT], metaclass=ABCMeta):
+class AbstractRepository(t.Generic[EntityT, EntityIdT, SessionT], metaclass=ABCMeta):
     """A repository interface."""
 
-    # identity: t.Type[EntityIdT]
-
-    # def __init__(self, model: t.Type[EntityT]):
-    #     self.model = model
-
-    @property
-    def model(self) -> t.Type[EntityT]:
-        return self.__orig_class__.__args__[0]  # type: ignore
-
-    @property
-    def identity(self) -> t.Type[EntityIdT]:
-        return self.__orig_class__.__args__[1]  # type: ignore
+    model: t.Type[EntityT]
+    identity: t.Type[EntityIdT]
 
 
-class AbstractBulkRepository(t.Generic[EntityT, EntityIdT], metaclass=ABCMeta):
+class AbstractBulkRepository(t.Generic[EntityT, EntityIdT, SessionT], metaclass=ABCMeta):
     """A repository interface for bulk operations.
 
     Note: this interface circumvents ORM internals, breaking commonly expected behavior in order
     to gain performance benefits.  Only use this class whenever absolutely necessary.
     """
 
-    @property
-    def model(self) -> t.Type[EntityT]:
-        return self.__orig_class__.__args__[0]  # type: ignore
-
-    @property
-    def identity(self) -> t.Type[EntityIdT]:
-        return self.__orig_class__.__args__[1]  # type: ignore
+    model: t.Type[EntityT]
+    identity: t.Type[EntityIdT]
 
 
 class SQLAlchemyRepository(
-    AbstractRepository[EntityT, EntityIdT],
-    t.Generic[EntityT, EntityIdT],
+    AbstractRepository[EntityT, EntityIdT, SessionT], t.Generic[EntityT, EntityIdT, SessionT]
 ):
     """A repository that uses SQLAlchemy to persist data.
 
@@ -83,20 +66,21 @@ class SQLAlchemyRepository(
 
     """
 
-    # session: sa.orm.Session
     builder: StatementBuilder
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # self.session = session
-        self.builder = StatementBuilder(None)
+    def __init__(self, model: t.Type[EntityT], identity: t.Type[EntityIdT]):
+        self.model = model
+        self.identity = identity
+        self.builder = StatementBuilder(self.model)
 
     def insert(self, session: sa.orm.Session, values: t.Dict[str, t.Any]) -> EntityT:
         """Insert a new model into the database."""
         new = self.model(**values)
+
         session.add(new)
         session.flush()
         session.refresh(new)
+
         return new
 
     def update(
@@ -109,8 +93,10 @@ class SQLAlchemyRepository(
         for field, value in values.items():
             if getattr(obj, field) != value:
                 setattr(obj, field, value)
+
         session.flush()
         session.refresh(obj)
+
         return obj
 
     def merge(
@@ -123,9 +109,11 @@ class SQLAlchemyRepository(
         """Merge model in session/db having id_ with values."""
         session.get(self.model, id_)
         values.update(id=id_)
+
         merged = session.merge(self.model(**values))
         session.flush()
         session.refresh(merged, with_for_update=for_update)  # type: ignore
+
         return merged
 
     def get(
@@ -151,19 +139,61 @@ class SQLAlchemyRepository(
         to satisfy the expected interface's return type: Optional[EntityT], one_or_none is called
         on the result before returning.
         """
+        selectables = (self.model,)
+
         execution_options = execution_options or {}
         if include_inactive:
             execution_options.setdefault("include_inactive", include_inactive)
 
-        statement = sa.select(self.model).where(self.model.id == id_).limit(1)  # type: ignore
-
-        for option in options:
-            statement = statement.options(option)
-
-        if for_update:
-            statement = statement.with_for_update()
+        statement = self.builder.select(
+            selectables,  # type: ignore
+            conditions=[self.model.id == id_],
+            options=options,
+            limit=1,
+            for_update=for_update,
+        )
 
         return session.scalars(statement, execution_options=execution_options).one_or_none()
+
+    def get_by_field(
+        self,
+        session: sa.orm.Session,
+        field: t.Union[ColumnExpr, str],
+        value: t.Any,
+        op: Operator = operator.eq,
+        order_by: t.Sequence[t.Union[ColumnExpr, str]] = (),
+        options: t.Sequence[ORMOption] = (),
+        execution_options: t.Optional[t.Dict[str, t.Any]] = None,
+        offset: t.Optional[int] = None,
+        limit: t.Optional[int] = None,
+        distinct: bool = False,
+        for_update: bool = False,
+        include_inactive: bool = False,
+    ) -> sa.ScalarResult[EntityT]:
+        """Select models where field is equal to value."""
+        selectables = (self.model,)
+
+        execution_options = execution_options or {}
+        if include_inactive:
+            execution_options.setdefault("include_inactive", include_inactive)
+
+        if isinstance(field, str):
+            field = getattr(self.model, field)
+
+        conditions = [t.cast(ColumnExpr, op(field, value))]
+
+        statement = self.builder.select(
+            selectables,  # type: ignore
+            conditions=conditions,
+            order_by=order_by,
+            options=options,
+            offset=offset,
+            limit=limit,
+            distinct=distinct,
+            for_update=for_update,
+        )
+
+        return session.scalars(statement, execution_options=execution_options)
 
     def select(
         self,
@@ -193,7 +223,7 @@ class SQLAlchemyRepository(
         if yield_by_chunk:
             execution_options.setdefault("yield_per", yield_by_chunk)
 
-        statement = self.builder.complex_select(
+        statement = self.builder.select(
             selectables,
             conditions=conditions,
             group_by=group_by,
@@ -214,10 +244,7 @@ class SQLAlchemyRepository(
     def delete(
         self, session: sa.orm.Session, id_: EntityIdT, include_inactive: bool = False
     ) -> None:
-        # if self.has_soft_delete:
-        #     raise RuntimeError("Can't delete entity that uses soft-delete semantics.")
-
-        entity = self.get(id_, include_inactive=include_inactive)
+        entity = self.get(session, id_, include_inactive=include_inactive)
         if not entity:
             raise RuntimeError(f"Entity with id {id_} not found.")
 
@@ -225,16 +252,10 @@ class SQLAlchemyRepository(
         session.flush()
 
     def deactivate(self, session: sa.orm.Session, id_: EntityIdT) -> EntityT:
-        # if not self.has_soft_delete:
-        #     raise RuntimeError("Can't delete entity that uses soft-delete semantics.")
-
-        return self.update(id_, dict(is_active=False))
+        return self.update(session, id_, dict(is_active=False))
 
     def reactivate(self, session: sa.orm.Session, id_: EntityIdT) -> EntityT:
-        # if not self.has_soft_delete:
-        #     raise RuntimeError("Can't delete entity that uses soft-delete semantics.")
-
-        return self.update(id_, dict(is_active=False))
+        return self.update(session, id_, dict(is_active=False))
 
     def exists(
         self,
@@ -248,31 +269,36 @@ class SQLAlchemyRepository(
         Note: This performs better than simply trying to select an object since there is no
         overhead in sending the selected object and deserializing it.
         """
-        selectable = sa.sql.literal(True)
+        selectables = (sa.sql.literal(True),)
 
         execution_options = {}
         if include_inactive:
             execution_options.setdefault("include_inactive", include_inactive)
 
-        statement = sa.select(selectable).where(*conditions)  # type: ignore
-
-        if for_update:
-            statement = statement.with_for_update()
+        statement = self.builder.select(
+            selectables,
+            conditions=conditions,
+            limit=1,
+            for_update=for_update,
+        )
 
         result = session.execute(statement, execution_options=execution_options).scalar()
 
         return bool(result)
 
 
-class SQLAlchemyBulkRepository(AbstractBulkRepository, t.Generic[SessionT, EntityT, EntityIdT]):
-    def __init__(self, **kwargs: t.Any):
+class SQLAlchemyBulkRepository(
+    AbstractBulkRepository[EntityT, EntityIdT, SessionT], t.Generic[EntityT, EntityIdT, SessionT]
+):
+    builder: StatementBuilder
+
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.builder = StatementBuilder(self.model)
-        # session = session
+        self.builder = StatementBuilder(None)
 
     def bulk_insert(
         self,
-        session: sa.orm.Session,
+        session: SessionT,
         values: t.Sequence[t.Dict[str, t.Any]] = (),
         execution_options: t.Optional[t.Dict[str, t.Any]] = None,
     ) -> sa.Result[t.Any]:
@@ -281,7 +307,7 @@ class SQLAlchemyBulkRepository(AbstractBulkRepository, t.Generic[SessionT, Entit
 
     def bulk_update(
         self,
-        session: sa.orm.Session,
+        session: SessionT,
         conditions: t.Sequence[ColumnExpr] = (),
         values: t.Optional[t.Dict[str, t.Any]] = None,
         execution_options: t.Optional[t.Dict[str, t.Any]] = None,
@@ -291,7 +317,7 @@ class SQLAlchemyBulkRepository(AbstractBulkRepository, t.Generic[SessionT, Entit
 
     def bulk_delete(
         self,
-        session: sa.orm.Session,
+        session: SessionT,
         conditions: t.Sequence[ColumnExpr] = (),
         execution_options: t.Optional[t.Dict[str, t.Any]] = None,
     ) -> sa.Result[t.Any]:

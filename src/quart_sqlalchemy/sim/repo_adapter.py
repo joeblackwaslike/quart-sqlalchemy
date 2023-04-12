@@ -3,19 +3,14 @@ import typing as t
 import sqlalchemy
 import sqlalchemy.orm
 from pydantic import BaseModel
-from sqlalchemy import ScalarResult
-from sqlalchemy.orm import selectinload
-from sqlalchemy.orm import Session
-from sqlalchemy.sql.expression import func
-from sqlalchemy.sql.expression import label
 
-from quart_sqlalchemy.model import Base
 from quart_sqlalchemy.sim.repo import SQLAlchemyRepository
 from quart_sqlalchemy.types import ColumnExpr
 from quart_sqlalchemy.types import EntityIdT
 from quart_sqlalchemy.types import EntityT
 from quart_sqlalchemy.types import ORMOption
 from quart_sqlalchemy.types import Selectable
+from quart_sqlalchemy.types import SessionT
 
 
 sa = sqlalchemy
@@ -39,21 +34,18 @@ CreateSchemaT = t.TypeVar("CreateSchemaT", bound=BaseCreateSchema)
 UpdateSchemaT = t.TypeVar("UpdateSchemaT", bound=BaseUpdateSchema)
 
 
-class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT]):
-    def __init__(
-        self,
-        model: t.Type[EntityT],
-        identity: t.Type[EntityIdT],
-        # session: Session,
-    ):
+class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT, SessionT]):
+    model: t.Type[EntityT]
+    identity: t.Type[EntityIdT]
+
+    def __init__(self, model: t.Type[EntityT], identity: t.Type[EntityIdT]):
         self.model = model
-        self._identity = identity
-        # self._session = session
-        self.repo = SQLAlchemyRepository[model, identity]()
+        self.identity = identity
+        self._adapted = SQLAlchemyRepository(model, identity)
 
     def get_by(
         self,
-        session: t.Optional[Session] = None,
+        session: SessionT,
         filters=None,
         allow_inactive=False,
         join_list=None,
@@ -72,10 +64,10 @@ class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT]):
         else:
             order_by_clause = ()
 
-        return self.repo.select(
+        return self._adapted.select(
             session,
             conditions=filters,
-            options=[selectinload(getattr(self.model, attr)) for attr in join_list],
+            options=[sa.orm.selectinload(getattr(self.model, attr)) for attr in join_list],
             for_update=for_update,
             order_by=order_by_clause,
             offset=offset,
@@ -85,7 +77,7 @@ class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT]):
 
     def get_by_id(
         self,
-        session=None,
+        session: SessionT,
         model_id=None,
         allow_inactive=False,
         join_list=None,
@@ -94,30 +86,35 @@ class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT]):
         if model_id is None:
             raise ValueError("model_id is required")
         join_list = join_list or ()
-        return self.repo.get(
+        return self._adapted.get(
             session,
             id_=model_id,
-            options=[selectinload(getattr(self.model, attr)) for attr in join_list],
+            options=[sa.orm.selectinload(getattr(self.model, attr)) for attr in join_list],
             for_update=for_update,
             include_inactive=allow_inactive,
         )
 
     def one(
-        self, session=None, filters=None, join_list=None, for_update=False, include_inactive=False
+        self,
+        session: SessionT,
+        filters=None,
+        join_list=None,
+        for_update=False,
+        include_inactive=False,
     ) -> EntityT:
         filters = filters or ()
         join_list = join_list or ()
-        return self.repo.select(
+        return self._adapted.select(
             session,
             conditions=filters,
-            options=[selectinload(getattr(self.model, attr)) for attr in join_list],
+            options=[sa.orm.selectinload(getattr(self.model, attr)) for attr in join_list],
             for_update=for_update,
             include_inactive=include_inactive,
         ).one()
 
     def count_by(
         self,
-        session=None,
+        session: SessionT,
         filters=None,
         group_by=None,
         distinct_column=None,
@@ -128,36 +125,36 @@ class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT]):
         group_by = group_by or ()
 
         if distinct_column:
-            selectables = [label("count", func.count(func.distinct(distinct_column)))]
+            selectables = [sa.label("count", sa.func.count(sa.func.distinct(distinct_column)))]
         else:
-            selectables = [label("count", func.count(self.model.id))]
+            selectables = [sa.label("count", sa.func.count(self.model.id))]
 
         for group in group_by:
             selectables.append(group.expression)
 
-        result = self.repo.select(session, selectables, conditions=filters, group_by=group_by)
+        result = self._adapted.select(session, selectables, conditions=filters, group_by=group_by)
 
         return result.all()
 
-    def add(self, session=None, **kwargs) -> EntityT:
-        return self.repo.insert(session, kwargs)
+    def add(self, session: SessionT, **kwargs) -> EntityT:
+        return self._adapted.insert(session, kwargs)
 
-    def update(self, session=None, model_id=None, **kwargs) -> EntityT:
-        return self.repo.update(session, id_=model_id, values=kwargs)
+    def update(self, session: SessionT, model_id=None, **kwargs) -> EntityT:
+        return self._adapted.update(session, id_=model_id, values=kwargs)
 
-    def update_by(self, session=None, filters=None, **kwargs) -> EntityT:
+    def update_by(self, session: SessionT, filters=None, **kwargs) -> EntityT:
         if not filters:
             raise ValueError("Full table scans are prohibited. Please provide filters")
 
-        row = self.repo.select(session, conditions=filters, limit=2).one()
-        return self.repo.update(session, id_=row.id, values=kwargs)
+        row = self._adapted.select(session, conditions=filters, limit=2).one()
+        return self._adapted.update(session, id_=row.id, values=kwargs)
 
-    def delete_by_id(self, session=None, model_id=None) -> None:
-        self.repo.delete(session, id_=model_id, include_inactive=True)
+    def delete_by_id(self, session: SessionT, model_id=None) -> None:
+        self._adapted.delete(session, id_=model_id, include_inactive=True)
 
-    def delete_one_by(self, session=None, filters=None, optional=False) -> None:
+    def delete_one_by(self, session: SessionT, filters=None, optional=False) -> None:
         filters = filters or ()
-        result = self.repo.select(session, conditions=filters, limit=1)
+        result = self._adapted.select(session, conditions=filters, limit=1)
 
         if optional:
             row = result.one_or_none()
@@ -166,25 +163,25 @@ class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT]):
         else:
             row = result.one()
 
-        self.repo.delete(session, id_=row.id)
+        self._adapted.delete(session, id_=row.id)
 
-    def exist(self, session=None, filters=None, allow_inactive=False) -> bool:
+    def exist(self, session: SessionT, filters=None, allow_inactive=False) -> bool:
         filters = filters or ()
-        return self.repo.exists(
+        return self._adapted.exists(
             session,
             conditions=filters,
             include_inactive=allow_inactive,
         )
 
     def yield_by_chunk(
-        self, session=None, chunk_size=100, join_list=None, filters=None, allow_inactive=False
+        self, session: SessionT, chunk_size=100, join_list=None, filters=None, allow_inactive=False
     ):
         filters = filters or ()
         join_list = join_list or ()
-        results = self.repo.select(
+        results = self._adapted.select(
             session,
             conditions=filters,
-            options=[selectinload(getattr(self.model, attr)) for attr in join_list],
+            options=[sa.orm.selectinload(getattr(self.model, attr)) for attr in join_list],
             include_inactive=allow_inactive,
             yield_by_chunk=chunk_size,
         )
@@ -192,10 +189,10 @@ class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT]):
             yield result
 
 
-class PydanticScalarResult(ScalarResult):
+class PydanticScalarResult(sa.ScalarResult, t.Generic[ModelSchemaT]):
     pydantic_schema: t.Type[ModelSchemaT]
 
-    def __init__(self, scalar_result, pydantic_schema: t.Type[ModelSchemaT]):
+    def __init__(self, scalar_result: t.Any, pydantic_schema: t.Type[ModelSchemaT]):
         for attribute in scalar_result.__slots__:
             setattr(self, attribute, getattr(scalar_result, attribute))
         self.pydantic_schema = pydantic_schema
@@ -231,14 +228,15 @@ class PydanticScalarResult(ScalarResult):
             yield self._translate_many(partition)
 
 
-class PydanticRepository(SQLAlchemyRepository, t.Generic[EntityT, EntityIdT, ModelSchemaT]):
-    @property
-    def schema(self) -> t.Type[ModelSchemaT]:
-        return self.__orig_class__.__args__[2]  # type: ignore
+class PydanticRepository(
+    SQLAlchemyRepository[EntityT, EntityIdT, SessionT],
+    t.Generic[EntityT, EntityIdT, SessionT, ModelSchemaT, CreateSchemaT, UpdateSchemaT],
+):
+    model_schema: t.Type[ModelSchemaT]
 
     def insert(
         self,
-        session: sa.orm.Session,
+        session: SessionT,
         create_schema: CreateSchemaT,
         sqla_model=False,
     ):
@@ -247,11 +245,11 @@ class PydanticRepository(SQLAlchemyRepository, t.Generic[EntityT, EntityIdT, Mod
 
         if sqla_model:
             return result
-        return self.schema.from_orm(result)
+        return self.model_schema.from_orm(result)
 
     def update(
         self,
-        session: sa.orm.Session,
+        session: SessionT,
         id_: EntityIdT,
         update_schema: UpdateSchemaT,
         sqla_model=False,
@@ -267,13 +265,14 @@ class PydanticRepository(SQLAlchemyRepository, t.Generic[EntityT, EntityIdT, Mod
         session.add(existing)
         session.flush()
         session.refresh(existing)
+
         if sqla_model:
             return existing
-        return self.schema.from_orm(existing)
+        return self.model_schema.from_orm(existing)
 
     def get(
         self,
-        session: sa.orm.Session,
+        session: SessionT,
         id_: EntityIdT,
         options: t.Sequence[ORMOption] = (),
         execution_options: t.Optional[t.Dict[str, t.Any]] = None,
@@ -294,11 +293,11 @@ class PydanticRepository(SQLAlchemyRepository, t.Generic[EntityT, EntityIdT, Mod
 
         if sqla_model:
             return row
-        return self.schema.from_orm(row)
+        return self.model_schema.from_orm(row)
 
     def select(
         self,
-        session: sa.orm.Session,
+        session: SessionT,
         selectables: t.Sequence[Selectable] = (),
         conditions: t.Sequence[ColumnExpr] = (),
         group_by: t.Sequence[t.Union[ColumnExpr, str]] = (),
@@ -328,6 +327,7 @@ class PydanticRepository(SQLAlchemyRepository, t.Generic[EntityT, EntityIdT, Mod
             include_inactive,
             yield_by_chunk,
         )
+
         if sqla_model:
             return result
-        return PydanticScalarResult(result, self.schema)
+        return PydanticScalarResult[self.model_schema](result, self.model_schema)

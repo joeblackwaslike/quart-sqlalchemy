@@ -13,6 +13,7 @@ auth_user_duplicate = _sync.signal(
             current_app: Quart,
             original_auth_user_id: ObjectID,
             duplicate_auth_user_ids: List[ObjectID],
+            session: sa.orm.Session,
         ) -> None:
             ...
     """,

@@ -46,7 +46,7 @@ class TestRetryingSessions(base.ComplexTestBase):
         #     s.commit()
 
     def test_retrying_session_class(self, db: SQLAlchemy, Todo: t.Type[t.Any], mocker):
-        class Unique(db.Model):
+        class Unique(db.Base):
             id: Mapped[int] = sa.orm.mapped_column(
                 sa.Identity(), primary_key=True, autoincrement=True
             )
@@ -57,7 +57,7 @@ class TestRetryingSessions(base.ComplexTestBase):
         db.create_all()
 
         with retrying_session(db.bind) as s:
-            todo = Todo(title="hello")
+            todo = Unique(name="hello")
 
             s.add(todo)
 

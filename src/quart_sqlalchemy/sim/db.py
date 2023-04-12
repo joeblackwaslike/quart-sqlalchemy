@@ -1,20 +1,39 @@
 import click
-import sqlalchemy as sa
-from quart import g
-from quart import request
+import sqlalchemy
+import sqlalchemy.orm
 from quart.cli import AppGroup
 from quart.cli import pass_script_info
 from quart.cli import ScriptInfo
 from sqlalchemy.types import Integer
 from sqlalchemy.types import TypeDecorator
 
-from quart_sqlalchemy import Base
 from quart_sqlalchemy import SQLAlchemyConfig
 from quart_sqlalchemy.framework import QuartSQLAlchemy
+from quart_sqlalchemy.model import BaseMixins
 from quart_sqlalchemy.sim.util import ObjectID
 
 
+sa = sqlalchemy
 cli = AppGroup("db-schema")
+
+
+def init_fixtures(session):
+    """Initialize the database with some fixtures."""
+    from quart_sqlalchemy.sim.model import AuthUser
+    from quart_sqlalchemy.sim.model import MagicClient
+
+    client = MagicClient(
+        app_name="My App",
+        public_api_key="4700aed5ee9f76f7be6398cd4b00b586",
+        auth_users=[
+            AuthUser(
+                email="joe@magic.link",
+                current_session_token="97ee741d53e11a490460927c8a2ce4a3",
+            ),
+        ],
+    )
+    session.add(client)
+    session.flush()
 
 
 class ObjectIDType(TypeDecorator):
@@ -47,22 +66,9 @@ class ObjectIDType(TypeDecorator):
         return ObjectID(value)
 
 
-class MyBase(Base):
+class MyBase(BaseMixins, sa.orm.DeclarativeBase):
+    __abstract__ = True
     type_annotation_map = {ObjectID: ObjectIDType}
-
-
-class MyQuartSQLAlchemy(QuartSQLAlchemy):
-    def init_app(self, app):
-        super().init_app(app)
-
-        @app.before_request
-        def set_bind():
-            if request.method in ["GET", "OPTIONS", "HEAD", "TRACE"]:
-                g.bind = self.get_bind("read-replica")
-            else:
-                g.bind = self.get_bind("default")
-
-        app.cli.add_command(cli)
 
 
 @cli.command("load")
@@ -76,10 +82,10 @@ def schema_load(info: ScriptInfo) -> None:
 
 
 # sqlite:///file:mem.db?mode=memory&cache=shared&uri=true
-db = MyQuartSQLAlchemy(
+db = QuartSQLAlchemy(
     SQLAlchemyConfig.parse_obj(
         {
-            "model_class": MyBase,
+            "base_class": MyBase,
             "binds": {
                 "default": {
                     "engine": {"url": "sqlite:///file:sim.db?cache=shared&uri=true"},

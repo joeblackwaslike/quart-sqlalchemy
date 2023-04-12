@@ -19,12 +19,12 @@ sa = sqlalchemy
 
 
 class StatementBuilder(t.Generic[EntityT]):
-    model: t.Type[EntityT]
+    model: t.Optional[t.Type[EntityT]]
 
-    def __init__(self, model: t.Type[EntityT]):
+    def __init__(self, model: t.Optional[t.Type[EntityT]] = None):
         self.model = model
 
-    def complex_select(
+    def select(
         self,
         selectables: t.Sequence[Selectable] = (),
         conditions: t.Sequence[ColumnExpr] = (),

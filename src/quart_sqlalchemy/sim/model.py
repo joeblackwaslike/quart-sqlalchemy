@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped
 
 from quart_sqlalchemy.model import SoftDeleteMixin
 from quart_sqlalchemy.model import TimestampMixin
-from quart_sqlalchemy.sim.db import db
+from quart_sqlalchemy.sim.db import MyBase
 from quart_sqlalchemy.sim.util import ObjectID
 
 
@@ -71,7 +71,7 @@ class WalletType(StrEnum):
     HEDERA = "HEDERA"
 
 
-class MagicClient(db.Model, SoftDeleteMixin, TimestampMixin):
+class MagicClient(MyBase, SoftDeleteMixin, TimestampMixin):
     __tablename__ = "magic_client"
 
     id: Mapped[ObjectID] = sa.orm.mapped_column(primary_key=True, autoincrement=True)
@@ -90,7 +90,7 @@ class MagicClient(db.Model, SoftDeleteMixin, TimestampMixin):
     )
 
 
-class AuthUser(db.Model, SoftDeleteMixin, TimestampMixin):
+class AuthUser(MyBase, SoftDeleteMixin, TimestampMixin):
     __tablename__ = "auth_user"
 
     id: Mapped[ObjectID] = sa.orm.mapped_column(primary_key=True, autoincrement=True)
@@ -145,7 +145,7 @@ class AuthUser(db.Model, SoftDeleteMixin, TimestampMixin):
         return self.global_auth_user_id is not None and self.user_type == EntityType.CONNECT.value
 
 
-class AuthWallet(db.Model, SoftDeleteMixin, TimestampMixin):
+class AuthWallet(MyBase, SoftDeleteMixin, TimestampMixin):
     __tablename__ = "auth_wallet"
 
     id: Mapped[ObjectID] = sa.orm.mapped_column(primary_key=True, autoincrement=True)

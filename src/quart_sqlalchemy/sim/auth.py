@@ -24,7 +24,9 @@ from sqlalchemy.orm import Session
 from werkzeug.exceptions import Forbidden
 
 from .model import AuthUser
+from .model import EntityType
 from .model import MagicClient
+from .model import Provenance
 from .schema import BaseSchema
 from .util import ObjectID
 
@@ -195,38 +197,12 @@ class RequestAuthenticator:
             yield scheme_credentials
 
 
-# def convert_model_result(func: t.Callable) -> t.Callable:
-#     @wraps(func)
-#     async def decorator(result: ResponseReturnValue) -> Response:
-#         status_or_headers = None
-#         headers = None
-#         if isinstance(result, tuple):
-#             value, status_or_headers, headers = result + (None,) * (3 - len(result))
-#         else:
-#             value = result
-
-#         was_model = False
-#         if is_dataclass(value):
-#             dict_or_value = asdict(value)
-#             was_model = True
-#         elif isinstance(value, BaseModel):
-#             dict_or_value = value.dict(by_alias=True)
-#             was_model = True
-#         else:
-#             dict_or_value = value
-
-#         if was_model:
-#             dict_or_value = camelize(dict_or_value)
-
-#         return await func((dict_or_value, status_or_headers, headers))
-
-#     return decorator
-
-
 class QuartAuth:
     authenticator = RequestAuthenticator()
 
-    def __init__(self, app: t.Optional[Quart] = None):
+    def __init__(self, app: t.Optional[Quart] = None, bind_name: str = "default"):
+        self.bind_name = bind_name
+
         if app is not None:
             self.init_app(app)
 
@@ -238,6 +214,8 @@ class QuartAuth:
         self.security_schemes = app.config.get("QUART_AUTH_SECURITY_SCHEMES", {})
         app.cli.add_command(cli)
 
+        app.extensions["auth"] = self
+
     def auth_endpoint_security(self):
         db = current_app.extensions.get("sqlalchemy")
         view_function = current_app.view_functions[request.endpoint]
@@ -245,7 +223,8 @@ class QuartAuth:
         if security_schemes is None:
             g.authorized_credentials = {}
 
-        with db.bind.Session() as session:
+        bind = db.get_bind(self.bind_name)
+        with bind.Session() as session:
             results = self.authenticator.enforce(security_schemes, session)
             authorized_credentials = {}
             for result in results:
@@ -253,9 +232,17 @@ class QuartAuth:
             g.authorized_credentials = authorized_credentials
 
 
-from .model import EntityType
-from .model import MagicClient
-from .model import Provenance
+class RequestCredentials:
+    def __init__(self, request):
+        self.request = request
+
+    @property
+    def current_user(self):
+        return g.authorized_credentials.get("session-token-bearer")
+
+    @property
+    def current_client(self):
+        return g.authorized_credentials.get("public-api-key")
 
 
 @cli.command("add-user")
@@ -282,8 +269,9 @@ from .model import Provenance
 def add_user(info: ScriptInfo, email: str, user_type: str, client_id: str) -> None:
     app = info.load_app()
     db = app.extensions.get("sqlalchemy")
-
-    with db.bind.Session() as s:
+    auth = app.extensions.get("auth")
+    bind = db.get_bind(auth.bind_name)
+    with bind.Session() as s:
         with s.begin():
             user = AuthUser(
                 email=email,
@@ -310,7 +298,9 @@ def add_user(info: ScriptInfo, email: str, user_type: str, client_id: str) -> No
 def add_client(info: ScriptInfo, name: str) -> None:
     app = info.load_app()
     db = app.extensions.get("sqlalchemy")
-    with db.bind.Session() as s:
+    auth = app.extensions.get("auth")
+    bind = db.get_bind(auth.bind_name)
+    with bind.Session() as s:
         with s.begin():
             client = MagicClient(app_name=name, public_api_key=secrets.token_hex(16))
             s.add(client)

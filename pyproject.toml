@@ -14,7 +14,8 @@ dependencies = [
     "pydantic",
     "tenacity",
     "sqlapagination",
-    "exceptiongroup"
+    "exceptiongroup",
+    "python-ulid"
 ]
 requires-python = ">=3.7"
 readme = "README.rst"
@@ -31,7 +32,7 @@ build-backend = "setuptools.build_meta"
 
 [project.optional-dependencies]
 sim = [
-    "quart-schema", "hashids"
+    "quart-schema", "hashids", "web3", "dependency-injector",
 ]
 tests = [
     "pytest",
@@ -121,7 +122,7 @@ ignore_missing_imports = true
 
 [tool.pylint.messages_control]
 max-line-length = 100
-disable = ["missing-docstring", "protected-access"]
+disable = ["invalid-name", "missing-docstring", "protected-access"]
 
 [tool.flakeheaven]
 baseline = ".flakeheaven_baseline"

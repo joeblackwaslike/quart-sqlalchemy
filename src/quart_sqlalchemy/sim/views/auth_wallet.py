@@ -1,23 +1,27 @@
 import logging
 import typing as t
 
+from dependency_injector.wiring import inject
+from dependency_injector.wiring import Provide
 from quart import g
-from quart.utils import run_sync
 
-from quart_sqlalchemy.retry import retry_context
-from quart_sqlalchemy.retry import RetryError
+from quart_sqlalchemy.framework import QuartSQLAlchemy
+from quart_sqlalchemy.session import set_global_contextual_session
 
 from ..auth import authorized_request
+from ..auth import RequestCredentials
 from ..handle import AuthWalletHandler
 from ..model import WalletManagementType
 from ..model import WalletType
 from ..schema import BaseSchema
+from ..schema import ResponseWrapper
 from ..util import ObjectID
+from ..web3 import Web3
 from .util import APIBlueprint
 
 
 logger = logging.getLogger(__name__)
-api = APIBlueprint("auth_wallet", __name__, url_prefix="auth_wallet")
+api = APIBlueprint("auth_wallet", __name__, url_prefix="/auth_wallet")
 
 
 @api.before_request
@@ -56,28 +60,32 @@ class WalletSyncResponse(BaseSchema):
         ],
     ),
 )
-async def sync(data: WalletSyncRequest) -> WalletSyncResponse:
-    user_credential = g.authorized_credentials.get("session-token-bearer")
+@inject
+def sync(
+    data: WalletSyncRequest,
+    auth_wallet_handler: AuthWalletHandler = Provide["AuthWalletHandler"],
+    web3: Web3 = Provide["web3"],
+    db: QuartSQLAlchemy = Provide["db"],
+    credentials: RequestCredentials = Provide["request_credentials"],
+) -> ResponseWrapper[WalletSyncResponse]:
+    with db.bind.Session() as session:
+        with session.begin():
+            with set_global_contextual_session(session):
+                wallet = auth_wallet_handler.sync_auth_wallet(
+                    credentials.current_user.subject.id,
+                    data.public_address,
+                    data.encrypted_private_address,
+                    WalletManagementType.DELEGATED.value,
+                    network=web3.network,
+                    wallet_type=data.wallet_type,
+                )
 
-    try:
-        for attempt in retry_context:
-            with attempt:
-                with g.bind.Session() as session:
-                    wallet = AuthWalletHandler(g.network, session).sync_auth_wallet(
-                        user_credential.subject.id,
-                        data.public_address,
-                        data.encrypted_private_address,
-                        WalletManagementType.DELEGATED.value,
-                    )
-    except RetryError:
-        pass
-    except RuntimeError:
-        raise RuntimeError("Unsupported wallet type or network")
-
-    return WalletSyncResponse(
-        wallet_id=wallet.id,
-        auth_user_id=wallet.auth_user_id,
-        wallet_type=wallet.wallet_type,
-        public_address=wallet.public_address,
-        encrypted_private_address=wallet.encrypted_private_address,
+    return ResponseWrapper[WalletSyncResponse](
+        data=dict(
+            wallet_id=wallet.id,
+            auth_user_id=wallet.auth_user_id,
+            wallet_type=wallet.wallet_type,
+            public_address=wallet.public_address,
+            encrypted_private_address=wallet.encrypted_private_address,
+        )  # type: ignore
     )
