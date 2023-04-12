@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import os
+import threading
 import typing as t
+from contextlib import asynccontextmanager
 from contextlib import contextmanager
+from contextlib import ExitStack
+from weakref import WeakValueDictionary
 
 import sqlalchemy
 import sqlalchemy.event
@@ -11,6 +15,7 @@ import sqlalchemy.ext
 import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
 import sqlalchemy.util
+import typing_extensions as tx
 
 from . import signals
 from .config import BindConfig
@@ -21,8 +26,16 @@ from .testing import TestTransaction
 
 sa = sqlalchemy
 
+SqlAMode = tx.Literal["orm", "core"]
+
+
+class BindNotInitialized(RuntimeError):
+    """ "Bind not initialized yet."""
+
 
 class BindBase:
+    name: t.Optional[str]
+    url: sa.URL
     config: BindConfig
     metadata: sa.MetaData
     engine: sa.Engine
@@ -30,27 +43,34 @@ class BindBase:
 
     def __init__(
         self,
-        config: BindConfig,
-        metadata: sa.MetaData,
+        name: t.Optional[str] = None,
+        url: t.Union[sa.URL, str] = "sqlite://",
+        config: t.Optional[BindConfig] = None,
+        metadata: t.Optional[sa.MetaData] = None,
     ):
-        self.config = config
-        self.metadata = metadata
-
-    @property
-    def url(self) -> str:
-        if not hasattr(self, "engine"):
-            raise RuntimeError("Database not initialized yet. Call initialize() first.")
-        return str(self.engine.url)
+        self.name = name
+        self.url = sa.make_url(url)
+        self.config = config or BindConfig.default()
+        self.metadata = metadata or sa.MetaData()
 
     @property
     def is_async(self) -> bool:
-        if not hasattr(self, "engine"):
-            raise RuntimeError("Database not initialized yet. Call initialize() first.")
-        return self.engine.url.get_dialect().is_async
+        return self.url.get_dialect().is_async
 
     @property
-    def is_read_only(self):
+    def is_read_only(self) -> bool:
         return self.config.read_only
+
+    def __repr__(self) -> str:
+        parts = [type(self).__name__]
+        if self.name:
+            parts.append(self.name)
+        if self.url:
+            parts.append(str(self.url))
+        if self.is_read_only:
+            parts.append("[read-only]")
+
+        return f"<{' '.join(parts)}>"
 
 
 class BindContext(BindBase):
@@ -58,30 +78,114 @@ class BindContext(BindBase):
 
 
 class Bind(BindBase):
+    lock: threading.Lock
+    _instances: WeakValueDictionary = WeakValueDictionary()
+
     def __init__(
         self,
-        config: BindConfig,
-        metadata: sa.MetaData,
+        name: t.Optional[str] = None,
+        url: t.Union[sa.URL, str] = "sqlite://",
+        config: t.Optional[BindConfig] = None,
+        metadata: t.Optional[sa.MetaData] = None,
         initialize: bool = True,
+        track_instance: bool = False,
     ):
-        self.config = config
-        self.metadata = metadata
+        super().__init__(name, url, config, metadata)
+        self._initialization_lock = threading.Lock()
+
+        if track_instance:
+            self._track_instance(name)
 
         if initialize:
             self.initialize()
 
-    def initialize(self):
-        if hasattr(self, "engine"):
-            self.engine.dispose()
+        self._session_stack = []
 
-        self.engine = self.create_engine(
-            self.config.engine.dict(exclude_unset=True, exclude_none=True),
-            prefix="",
-        )
-        self.Session = self.create_session_factory(
-            self.config.session.dict(exclude_unset=True, exclude_none=True),
-        )
+    def initialize(self) -> tx.Self:
+        with self._initialization_lock:
+            if hasattr(self, "engine"):
+                self.engine.dispose()
+
+            engine_config = self.config.engine.dict(exclude_unset=True, exclude_none=True)
+            engine_config.setdefault("url", self.url)
+            self.engine = self.create_engine(engine_config, prefix="")
+
+            session_options = self.config.session.dict(exclude_unset=True, exclude_none=True)
+            self.Session = self.create_session_factory(session_options)
         return self
+
+    def _track_instance(self, name):
+        if name is None:
+            return
+
+        if name in Bind._instances:
+            raise ValueError("Bind instance `{name}` already exists, use another name.")
+        else:
+            Bind._instances[name] = self
+
+    @classmethod
+    def get_instance(cls, name: str = "default") -> Bind:
+        """Get the singleton instance having `name`.
+
+        This enables some really cool patterns similar to how logging allows getting an already
+        initialized logger from anywhere without importing it directly.  Features like this are
+        most useful when working in web frameworks like flask and quart that are more prone to
+        circular dependency issues.
+
+        Example:
+            app/db.py:
+                from quart_sqlalchemy import Bind
+
+                default = Bind("default", url="sqlite://")
+
+                with default.Session() as session:
+                    with session.begin():
+                        session.add(User())
+
+
+            app/views/v1/user/login.py
+                from quart_sqlalchemy import Bind
+
+                # get the same `default` bind already instantiated in app/db.py
+                default = Bind.get_instance("default")
+
+                with default.Session() as session:
+                    with session.begin():
+                        session.add(User())
+                ...
+        """
+        try:
+            return Bind._instances[name]()
+        except KeyError as err:
+            raise ValueError(f"Bind instance `{name}` does not exist.") from err
+
+    @t.overload
+    @contextmanager
+    def transaction(self, mode: SqlAMode = "orm") -> t.Generator[sa.orm.Session, None, None]:
+        ...
+
+    @t.overload
+    @contextmanager
+    def transaction(self, mode: SqlAMode = "core") -> t.Generator[sa.Connection, None, None]:
+        ...
+
+    @contextmanager
+    def transaction(
+        self, mode: SqlAMode = "orm"
+    ) -> t.Generator[t.Union[sa.orm.Session, sa.Connection], None, None]:
+        if mode == "orm":
+            with self.Session() as session:
+                with session.begin():
+                    yield session
+        elif mode == "core":
+            with self.engine.connect() as connection:
+                with connection.begin():
+                    yield connection
+        else:
+            raise ValueError(f"Invalid transaction mode `{mode}`")
+
+    def test_transaction(self, savepoint: bool = False) -> TestTransaction:
+        return TestTransaction(self, savepoint=savepoint)
 
     @contextmanager
     def context(
@@ -89,7 +193,7 @@ class Bind(BindBase):
         engine_execution_options: t.Optional[t.Dict[str, t.Any]] = None,
         session_execution__options: t.Optional[t.Dict[str, t.Any]] = None,
     ) -> t.Generator[BindContext, None, None]:
-        context = BindContext(self.config, self.metadata)
+        context = BindContext(f"{self.name}-context", self.url, self.config, self.metadata)
         context.engine = self.engine.execution_options(**engine_execution_options or {})
         context.Session = self.create_session_factory(session_execution__options or {})
         context.Session.configure(bind=context.engine)
@@ -110,7 +214,7 @@ class Bind(BindBase):
         )
 
     def create_session_factory(
-        self, options: dict[str, t.Any]
+        self, options: t.Dict[str, t.Any]
     ) -> sa.orm.sessionmaker[sa.orm.Session]:
         signals.before_bind_session_factory_created.send(self, options=options)
         session_factory = sa.orm.sessionmaker(bind=self.engine, **options)
@@ -124,9 +228,6 @@ class Bind(BindBase):
         engine = sa.engine_from_config(config, prefix=prefix)
         signals.after_bind_engine_created.send(self, config=config, prefix=prefix, engine=engine)
         return engine
-
-    def test_transaction(self, savepoint: bool = False):
-        return TestTransaction(self, savepoint=savepoint)
 
     def _call_metadata(self, method: str):
         with self.engine.connect() as conn:
@@ -142,13 +243,26 @@ class Bind(BindBase):
     def reflect(self):
         return self._call_metadata("reflect")
 
-    def __repr__(self) -> str:
-        return f"<{type(self).__name__} {self.engine.url}>"
-
 
 class AsyncBind(Bind):
     engine: sa.ext.asyncio.AsyncEngine
     Session: sa.ext.asyncio.async_sessionmaker
+
+    @asynccontextmanager
+    async def transaction(self, mode: SqlAMode = "orm"):
+        if mode == "orm":
+            async with self.Session() as session:
+                async with session.begin():
+                    yield session
+        elif mode == "core":
+            async with self.engine.connect() as connection:
+                async with connection.begin():
+                    yield connection
+        else:
+            raise ValueError(f"Invalid transaction mode `{mode}`")
+
+    def test_transaction(self, savepoint: bool = False):
+        return AsyncTestTransaction(self, savepoint=savepoint)
 
     def create_session_factory(
         self, options: dict[str, t.Any]
@@ -181,9 +295,6 @@ class AsyncBind(Bind):
         engine = sa.ext.asyncio.async_engine_from_config(config, prefix=prefix)
         signals.after_bind_engine_created.send(self, config=config, prefix=prefix, engine=engine)
         return engine
-
-    def test_transaction(self, savepoint: bool = False):
-        return AsyncTestTransaction(self, savepoint=savepoint)
 
     async def _call_metadata(self, method: str):
         async with self.engine.connect() as conn:

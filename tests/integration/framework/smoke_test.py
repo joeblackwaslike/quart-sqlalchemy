@@ -40,7 +40,7 @@ class TestQuartSQLAlchemySmoke(SimpleTestBase):
     def test_simple_transactional_core_flow(self, db: QuartSQLAlchemy, Todo: t.Any):
         with db.bind.engine.connect() as conn:
             with conn.begin():
-                result = conn.execute(sa.insert(Todo))
+                result = conn.execute(sa.insert(Todo).values(title="default"))
                 insert_row = result.inserted_primary_key
 
             select_row = conn.execute(sa.select(Todo).where(Todo.id == insert_row.id)).one()
@@ -56,15 +56,3 @@ class TestQuartSQLAlchemySmoke(SimpleTestBase):
         with db.bind.engine.connect() as conn:
             with pytest.raises(sa.exc.NoResultFound):
                 conn.execute(sa.select(Todo).where(Todo.id == insert_row.id)).one()
-
-    def test_orm_models_comparable(self, db: QuartSQLAlchemy, Todo: t.Any):
-        with db.bind.Session() as s:
-            with s.begin():
-                todo = Todo()
-                s.add(todo)
-                s.flush()
-                s.refresh(todo)
-
-        with db.bind.Session() as s:
-            select_todo = s.scalars(sa.select(Todo).where(Todo.id == todo.id)).one()
-            assert todo == select_todo

@@ -10,6 +10,7 @@ import sqlalchemy.ext
 import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
 import sqlalchemy.util
+import typing_extensions as tx
 from sqlalchemy.orm import Mapped
 
 from ..util import camel_to_snake_case
@@ -18,14 +19,37 @@ from ..util import camel_to_snake_case
 sa = sqlalchemy
 
 
+class ORMModel(tx.Protocol):
+    __table__: sa.Table
+
+
+class SerializingModel(ORMModel):
+    __table__: sa.Table
+
+    def to_dict(
+        self: ORMModel,
+        obj: t.Optional[t.Any] = None,
+        max_depth: int = 3,
+        _children_seen: t.Optional[set] = None,
+        _relations_seen: t.Optional[set] = None,
+    ) -> t.Dict[str, t.Any]:
+        ...
+
+
 class TableNameMixin:
+    __abstract__ = True
+    __table__: sa.Table
+
     @sa.orm.declared_attr.directive
-    def __tablename__(cls) -> str:
+    def __tablename__(cls: t.Type[ORMModel]) -> str:
         return camel_to_snake_case(cls.__name__)
 
 
 class ReprMixin:
-    def __repr__(self) -> str:
+    __abstract__ = True
+    __table__: sa.Table
+
+    def __repr__(self: ORMModel) -> str:
         state = sa.inspect(self)
         if state is None:
             return super().__repr__()
@@ -41,7 +65,10 @@ class ReprMixin:
 
 
 class ComparableMixin:
-    def __eq__(self, other):
+    __abstract__ = True
+    __table__: sa.Table
+
+    def __eq__(self: ORMModel, other: ORMModel) -> bool:
         if type(self).__name__ != type(other).__name__:
             return False
 
@@ -55,37 +82,38 @@ class ComparableMixin:
 
 
 class TotalOrderMixin:
-    def __lt__(self, other):
+    __abstract__ = True
+    __table__: sa.Table
+
+    def __lt__(self: ORMModel, other: ORMModel) -> bool:
         if type(self).__name__ != type(other).__name__:
-            return False
+            raise NotImplemented
 
-        for key, column in sa.inspect(type(self)).columns.items():
-            if column.primary_key:
-                continue
-
-            if not (getattr(self, key) == getattr(other, key)):
-                return False
-        return True
+        primary_keys = sa.inspect(type(self)).primary_key
+        self_keys = [getattr(self, col.name) for col in primary_keys]
+        other_keys = [getattr(other, col.name) for col in primary_keys]
+        return self_keys < other_keys
 
 
 class SimpleDictMixin:
     __abstract__ = True
     __table__: sa.Table
 
-    def to_dict(self):
+    def to_dict(self) -> t.Dict[str, t.Any]:
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 class RecursiveDictMixin:
     __abstract__ = True
+    __table__: sa.Table
 
-    def model_to_dict(
-        self,
+    def to_dict(
+        self: tx.Self,
         obj: t.Optional[t.Any] = None,
-        max_depth: int = 3,
+        max_depth: int = 1,
         _children_seen: t.Optional[set] = None,
         _relations_seen: t.Optional[set] = None,
-    ):
+    ) -> t.Dict[str, t.Any]:
         """Convert model to python dict, with recursion.
 
         Args:
@@ -106,11 +134,7 @@ class RecursiveDictMixin:
 
         mapper = sa.inspect(obj).mapper
         columns = [column.key for column in mapper.columns]
-        get_key_value = (
-            lambda c: (c, getattr(obj, c).isoformat())
-            if isinstance(getattr(obj, c), datetime)
-            else (c, getattr(obj, c))
-        )
+        get_key_value = lambda c: (c, getattr(obj, c))
         data = dict(map(get_key_value, columns))
 
         if max_depth > 0:
@@ -125,10 +149,12 @@ class RecursiveDictMixin:
                 if relationship_children is not None:
                     if relation.uselist:
                         children = []
-                        for child in (c for c in relationship_children if c not in _children_seen):
-                            _children_seen.add(child)
+                        for child in (
+                            c for c in relationship_children if repr(c) not in _children_seen
+                        ):
+                            _children_seen.add(repr(child))
                             children.append(
-                                self.model_to_dict(
+                                self.to_dict(
                                     child,
                                     max_depth=max_depth - 1,
                                     _children_seen=_children_seen,
@@ -137,7 +163,7 @@ class RecursiveDictMixin:
                             )
                         data[name] = children
                     else:
-                        data[name] = self.model_to_dict(
+                        data[name] = self.to_dict(
                             relationship_children,
                             max_depth=max_depth - 1,
                             _children_seen=_children_seen,
@@ -148,6 +174,9 @@ class RecursiveDictMixin:
 
 
 class IdentityMixin:
+    __abstract__ = True
+    __table__: sa.Table
+
     id: Mapped[int] = sa.orm.mapped_column(sa.Identity(), primary_key=True, autoincrement=True)
 
 
@@ -191,21 +220,29 @@ class SoftDeleteMixin:
     """
 
     __abstract__ = True
+    __table__: sa.Table
 
     is_active: Mapped[bool] = sa.orm.mapped_column(default=True)
 
 
 class TimestampMixin:
     __abstract__ = True
+    __table__: sa.Table
 
-    created_at: Mapped[datetime] = sa.orm.mapped_column(default=sa.func.now())
+    created_at: Mapped[datetime] = sa.orm.mapped_column(
+        default=sa.func.now(), server_default=sa.FetchedValue()
+    )
     updated_at: Mapped[datetime] = sa.orm.mapped_column(
-        default=sa.func.now(), onupdate=sa.func.now()
+        default=sa.func.now(),
+        onupdate=sa.func.now(),
+        server_default=sa.FetchedValue(),
+        server_onupdate=sa.FetchedValue(),
     )
 
 
 class VersionMixin:
     __abstract__ = True
+    __table__: sa.Table
 
     version_id: Mapped[int] = sa.orm.mapped_column(nullable=False)
 
@@ -222,6 +259,7 @@ class EagerDefaultsMixin:
     """
 
     __abstract__ = True
+    __table__: sa.Table
 
     @sa.orm.declared_attr.directive
     def __mapper_args__(cls) -> dict[str, t.Any]:
@@ -289,6 +327,7 @@ def accumulate_tuples_with_mapping(class_, attribute) -> t.Sequence[t.Any]:
 
 class DynamicArgsMixin:
     __abstract__ = True
+    __table__: sa.Table
 
     @sa.orm.declared_attr.directive
     def __mapper_args__(cls) -> t.Dict[str, t.Any]:

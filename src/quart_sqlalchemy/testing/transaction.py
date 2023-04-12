@@ -23,13 +23,13 @@ class TestTransaction:
         self.savepoint = savepoint
         self.bind = bind
 
-    def Session(self, **options):
+    def Session(self, **options: t.Any) -> sa.orm.Session:
         options.update(bind=self.connection)
         if self.savepoint:
             options.update(join_transaction_mode="create_savepoint")
         return self.bind.Session(**options)
 
-    def begin(self):
+    def open(self) -> None:
         self.connection = self.bind.engine.connect()
         self.trans = self.connection.begin()
 
@@ -59,7 +59,7 @@ class TestTransaction:
             )
 
     def __enter__(self):
-        self.begin()
+        self.open()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -82,7 +82,7 @@ class AsyncTestTransaction(TestTransaction):
     def __init__(self, bind: "AsyncBind", savepoint: bool = False):
         super().__init__(bind, savepoint=savepoint)
 
-    async def begin(self):
+    async def open(self):
         self.connection = await self.bind.engine.connect()
         self.trans = await self.connection.begin()
 
@@ -112,7 +112,7 @@ class AsyncTestTransaction(TestTransaction):
             )
 
     async def __aenter__(self):
-        await self.begin()
+        await self.open()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

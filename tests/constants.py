@@ -1,19 +1,18 @@
 from quart_sqlalchemy import Base
 
 
-simple_mapping_config = {
-    "model_class": Base,
-    "binds": {
+simple_config = {
+    "SQLALCHEMY_BINDS": {
         "default": {
             "engine": {"url": "sqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
             "session": {"expire_on_commit": False},
         }
     },
+    "SQLALCHEMY_BASE_CLASS": Base,
 }
 
-complex_mapping_config = {
-    "model_class": Base,
-    "binds": {
+complex_config = {
+    "SQLALCHEMY_BINDS": {
         "default": {
             "engine": {"url": "sqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
             "session": {"expire_on_commit": False},
@@ -28,14 +27,15 @@ complex_mapping_config = {
             "session": {"expire_on_commit": False},
         },
     },
+    "SQLALCHEMY_BASE_CLASS": Base,
 }
 
-async_mapping_config = {
-    "model_class": Base,
-    "binds": {
+async_config = {
+    "SQLALCHEMY_BINDS": {
         "default": {
             "engine": {"url": "sqlite+aiosqlite:///file:mem.db?mode=memory&cache=shared&uri=true"},
             "session": {"expire_on_commit": False},
-        }
+        },
     },
+    "SQLALCHEMY_BASE_CLASS": Base,
 }

@@ -11,10 +11,12 @@ from .cli import db_cli
 class QuartSQLAlchemy(SQLAlchemy):
     def __init__(
         self,
-        config: SQLAlchemyConfig,
+        config: t.Optional[SQLAlchemyConfig] = None,
         app: t.Optional[Quart] = None,
     ):
-        super().__init__(config)
+        initialize = False if config is None else True
+        super().__init__(config, initialize=initialize)
+
         if app is not None:
             self.init_app(app)
 
@@ -24,15 +26,21 @@ class QuartSQLAlchemy(SQLAlchemy):
                 f"A {type(self).__name__} instance has already been registered on this app"
             )
 
+        if self.config is None:
+            self.config = SQLAlchemyConfig.from_framework(app.config)
+            self.initialize()
+
         signals.before_framework_extension_initialization.send(self, app=app)
 
         app.extensions["sqlalchemy"] = self
 
         @app.shell_context_processor
         def export_sqlalchemy_objects():
+            nonlocal self
+
             return dict(
                 db=self,
-                **{m.class_.__name__: m.class_ for m in self.Model._sa_registry.mappers},
+                **{m.class_.__name__: m.class_ for m in self.Base.registry.mappers},
             )
 
         app.cli.add_command(db_cli)

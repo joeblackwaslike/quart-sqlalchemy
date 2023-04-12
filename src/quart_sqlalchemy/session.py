@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import typing as t
+from contextlib import contextmanager
+from contextvars import ContextVar
+from functools import wraps
 
 import sqlalchemy
 import sqlalchemy.exc
@@ -16,6 +19,56 @@ from .types import ORMOption
 
 
 sa = sqlalchemy
+
+
+"""
+Requirements:
+  * a global context var session
+  * a context manager that sets the session value and manages its lifetime
+  * a factory that will always return the current session value
+  * a decorator that will inject the current session value
+"""
+
+_global_contextual_session = ContextVar("_global_contextual_session")
+
+
+@contextmanager
+def set_global_contextual_session(session, bind=None):
+    token = _global_contextual_session.set(session)
+    try:
+        yield
+    finally:
+        _global_contextual_session.reset(token)
+
+
+def provide_global_contextual_session(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        session_in_args = any(
+            [isinstance(arg, (sa.orm.Session, sa.ext.asyncio.AsyncSession)) for arg in args]
+        )
+        session_in_kwargs = "session" in kwargs
+        session_provided = session_in_args or session_in_kwargs
+
+        if session_provided:
+            return func(self, *args, **kwargs)
+        else:
+            session = session_proxy()
+
+            return func(self, session, *args, **kwargs)
+
+    return wrapper
+
+
+class SessionProxy:
+    def __call__(self) -> t.Union[sa.orm.Session, sa.ext.asyncio.AsyncSession]:
+        return _global_contextual_session.get()
+
+    def __getattr__(self, name):
+        return getattr(self(), name)
+
+
+session_proxy = SessionProxy()
 
 
 class Session(sa.orm.Session, t.Generic[EntityT, EntityIdT]):
