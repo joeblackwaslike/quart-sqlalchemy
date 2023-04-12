@@ -59,11 +59,7 @@ class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT, SessionT]):
 
         join_list = join_list or ()
 
-        if order_by_clause is not None:
-            order_by_clause = (order_by_clause,)
-        else:
-            order_by_clause = ()
-
+        order_by_clause = (order_by_clause, ) if order_by_clause is not None else ()
         return self._adapted.select(
             session,
             conditions=filters,
@@ -129,9 +125,7 @@ class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT, SessionT]):
         else:
             selectables = [sa.label("count", sa.func.count(self.model.id))]
 
-        for group in group_by:
-            selectables.append(group.expression)
-
+        selectables.extend(group.expression for group in group_by)
         result = self._adapted.select(session, selectables, conditions=filters, group_by=group_by)
 
         return result.all()
@@ -178,15 +172,16 @@ class RepositoryLegacyAdapter(t.Generic[EntityT, EntityIdT, SessionT]):
     ):
         filters = filters or ()
         join_list = join_list or ()
-        results = self._adapted.select(
+        yield from self._adapted.select(
             session,
             conditions=filters,
-            options=[sa.orm.selectinload(getattr(self.model, attr)) for attr in join_list],
+            options=[
+                sa.orm.selectinload(getattr(self.model, attr))
+                for attr in join_list
+            ],
             include_inactive=allow_inactive,
             yield_by_chunk=chunk_size,
         )
-        for result in results:
-            yield result
 
 
 class PydanticScalarResult(sa.ScalarResult, t.Generic[ModelSchemaT]):
@@ -243,9 +238,7 @@ class PydanticRepository(
         create_data = create_schema.dict()
         result = super().insert(session, create_data)
 
-        if sqla_model:
-            return result
-        return self.model_schema.from_orm(result)
+        return result if sqla_model else self.model_schema.from_orm(result)
 
     def update(
         self,
@@ -266,9 +259,7 @@ class PydanticRepository(
         session.flush()
         session.refresh(existing)
 
-        if sqla_model:
-            return existing
-        return self.model_schema.from_orm(existing)
+        return existing if sqla_model else self.model_schema.from_orm(existing)
 
     def get(
         self,
@@ -291,9 +282,7 @@ class PydanticRepository(
         if row is None:
             return
 
-        if sqla_model:
-            return row
-        return self.model_schema.from_orm(row)
+        return row if sqla_model else self.model_schema.from_orm(row)
 
     def select(
         self,

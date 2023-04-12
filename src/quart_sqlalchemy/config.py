@@ -146,8 +146,9 @@ class EngineConfig(ConfigBase):
     @root_validator
     def scrub_execution_options(cls, values):
         if "execution_options" in values:
-            execute_options = values["execution_options"].dict(exclude_defaults=True)
-            if execute_options:
+            if execute_options := values["execution_options"].dict(
+                exclude_defaults=True
+            ):
                 values["execution_options"] = execute_options
         return values
 

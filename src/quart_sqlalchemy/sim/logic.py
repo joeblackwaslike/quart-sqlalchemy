@@ -31,13 +31,12 @@ class LogicMeta(type):
     def __init__(cls, name, bases, cls_dict):
         if not hasattr(cls, "_registry"):
             cls._registry = {}
-        else:
-            if cls.__name__ not in cls._ignore:
-                model = getattr(cls, "model", None)
-                if model is not None:
-                    name = model.__name__
+        elif cls.__name__ not in cls._ignore:
+            model = getattr(cls, "model", None)
+            if model is not None:
+                name = model.__name__
 
-                cls._registry[name] = cls()
+            cls._registry[name] = cls()
 
         super().__init__(name, bases, cls_dict)
 
@@ -161,10 +160,7 @@ class AuthUser(LogicComponent[auth_user_model, ObjectID, sa.orm.Session]):
             user_type=user_type,
         ):
             logger.exception(
-                "User duplication for email: {} (client_id: {})".format(
-                    email,
-                    client_id,
-                ),
+                f"User duplication for email: {email} (client_id: {client_id})"
             )
             raise DuplicateAuthUser()
 
@@ -176,10 +172,7 @@ class AuthUser(LogicComponent[auth_user_model, ObjectID, sa.orm.Session]):
             **kwargs,
         )
         logger.info(
-            "New auth user (id: {}) created by email (client_id: {})".format(
-                row.id,
-                client_id,
-            ),
+            f"New auth user (id: {row.id}) created by email (client_id: {client_id})"
         )
 
         return row
@@ -203,7 +196,7 @@ class AuthUser(LogicComponent[auth_user_model, ObjectID, sa.orm.Session]):
             date_verified=datetime.utcnow() if is_verified else None,
         )
         logger.info(
-            "New auth user (id: {}) created by (client_id: {})".format(row.id, client_id),
+            f"New auth user (id: {row.id}) created by (client_id: {client_id})"
         )
 
         return row
@@ -409,7 +402,7 @@ class AuthWallet(LogicComponent[auth_wallet_model, ObjectID, sa.orm.Session]):
         management_type=None,
         auth_user_id=None,
     ):
-        new_row = self._repository.add(
+        return self._repository.add(
             session,
             auth_user_id=auth_user_id,
             public_address=public_address,
@@ -418,8 +411,6 @@ class AuthWallet(LogicComponent[auth_wallet_model, ObjectID, sa.orm.Session]):
             management_type=management_type,
             network=network,
         )
-
-        return new_row
 
     @provide_global_contextual_session
     def get_by_id(self, session, model_id, allow_inactive=False, join_list=None):
@@ -441,10 +432,7 @@ class AuthWallet(LogicComponent[auth_wallet_model, ObjectID, sa.orm.Session]):
 
         row = self._repository.get_by(session, filters=filters, allow_inactive=not is_active)
 
-        if not row:
-            return None
-
-        return one(row)
+        return one(row) if row else None
 
     @provide_global_contextual_session
     def get_by_auth_user_id(
@@ -470,10 +458,7 @@ class AuthWallet(LogicComponent[auth_wallet_model, ObjectID, sa.orm.Session]):
             session, filters=filters, join_list=join_list, allow_inactive=not is_active
         )
 
-        if not rows:
-            return []
-
-        return rows
+        return rows or []
 
     @provide_global_contextual_session
     def update_by_id(self, session, model_id, **kwargs):
