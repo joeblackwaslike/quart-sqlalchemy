@@ -13,6 +13,7 @@
 				"source.organizeImports": true
 			}
 		},
-		"esbonio.sphinx.confDir": ""
+		"esbonio.sphinx.confDir": "",
+		"python.linting.pylintEnabled": false
 	}
 }

@@ -1,5 +1,5 @@
 __version__ = "3.0.2"
-
+from . import util
 from .bind import AsyncBind
 from .bind import Bind
 from .bind import BindContext

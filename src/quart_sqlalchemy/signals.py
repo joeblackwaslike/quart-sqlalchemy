@@ -113,3 +113,34 @@ after_framework_extension_initialization = sync_signals.signal(
             ...
     """,
 )
+
+
+framework_extension_load_fixtures = sync_signals.signal(
+    "quart-sqlalchemy.framework.extension.fixtures.load",
+    doc="""Fired to load fixtures into a fresh database.
+
+    No default signal handlers exist for this signal as the logic is very application dependent.
+    This signal handler is typically triggered using the CLI:
+
+        $ quart db fixtures load 
+    
+    Example:
+
+        @signals.framework_extension_load_fixtures.connect
+        def handle(sender: QuartSQLAlchemy, app: Quart):
+            db = sender.get_bind("default")
+            with db.Session() as session:
+                with session.begin():
+                    session.add_all(
+                        [
+                            models.User(username="user1"),
+                            models.User(username="user2"),
+                        ]
+                    )
+                    session.commit()
+
+    Handler signature:
+        def handle(sender: QuartSQLAlchemy, app: Quart):
+            ...
+    """,
+)
