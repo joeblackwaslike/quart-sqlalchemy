@@ -96,17 +96,12 @@ class MagicClientHandler(HandlerBase):
             self.session_factory(), magic_client_id, app_name=app_name
         )
 
-        if not client:
-            return None
-
-        return client.app_name
+        return client.app_name if client else None
 
     def update_by_id(self, magic_client_id, **kwargs):
-        client = self.logic.MagicClient.update_by_id(
+        return self.logic.MagicClient.update_by_id(
             self.session_factory(), magic_client_id, **kwargs
         )
-
-        return client
 
     def set_inactive_by_id(self, magic_client_id):
         """
@@ -314,11 +309,10 @@ class AuthWalletHandler(HandlerBase):
     ):
         session = self.session_factory()
         with session.begin_nested():
-            existing_wallet = self.logic.AuthWallet.get_by_auth_user_id(
+            if existing_wallet := self.logic.AuthWallet.get_by_auth_user_id(
                 session,
                 auth_user_id,
-            )
-            if existing_wallet:
+            ):
                 raise RuntimeError("WalletExistsForNetworkAndWalletType")
 
             return self.logic.AuthWallet.add(
