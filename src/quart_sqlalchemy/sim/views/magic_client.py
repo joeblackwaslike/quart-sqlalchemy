@@ -5,7 +5,6 @@ from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
 
 from quart_sqlalchemy.framework import QuartSQLAlchemy
-from quart_sqlalchemy.session import set_global_contextual_session
 
 from ..auth import authorized_request
 from ..auth import RequestCredentials
@@ -51,14 +50,14 @@ def create_magic_client(
 ) -> ResponseWrapper[CreateMagicClientResponse]:
     with db.bind.Session() as session:
         with session.begin():
-            with set_global_contextual_session(session):
-                client = magic_client_handler.add(
-                    app_name=data.app_name,
-                    rate_limit_tier=data.rate_limit_tier,
-                    connect_interop=data.connect_interop,
-                    is_signing_modal_enabled=data.is_signing_modal_enabled,
-                    global_audience_enabled=data.global_audience_enabled,
-                )
+            client = magic_client_handler.add(
+                session,
+                app_name=data.app_name,
+                rate_limit_tier=data.rate_limit_tier,
+                connect_interop=data.connect_interop,
+                is_signing_modal_enabled=data.is_signing_modal_enabled,
+                global_audience_enabled=data.global_audience_enabled,
+            )
 
     return ResponseWrapper[CreateMagicClientResponse](
         data=dict(magic_client=MagicClientSchema.from_orm(client))  # type: ignore
@@ -82,8 +81,9 @@ def get_magic_client(
     db: QuartSQLAlchemy = Provide["db"],
 ) -> ResponseWrapper[MagicClientSchema]:
     with db.bind.Session() as session:
-        with set_global_contextual_session(session):
-            client = magic_client_handler.get_by_public_api_key(credentials.current_client.value)
+        client = magic_client_handler.get_by_public_api_key(
+            session, credentials.current_client.value
+        )
 
     return ResponseWrapper[MagicClientSchema](
         data=MagicClientSchema.from_orm(client)  # type: ignore

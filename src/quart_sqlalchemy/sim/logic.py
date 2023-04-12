@@ -1,4 +1,3 @@
-import inspect
 import logging
 import secrets
 import typing as t
@@ -12,11 +11,8 @@ from quart_sqlalchemy.session import provide_global_contextual_session
 from quart_sqlalchemy.sim import signals
 from quart_sqlalchemy.sim.model import AuthUser as auth_user_model
 from quart_sqlalchemy.sim.model import AuthWallet as auth_wallet_model
-from quart_sqlalchemy.sim.model import ConnectInteropStatus
 from quart_sqlalchemy.sim.model import EntityType
 from quart_sqlalchemy.sim.model import MagicClient as magic_client_model
-from quart_sqlalchemy.sim.model import Provenance
-from quart_sqlalchemy.sim.model import WalletType
 from quart_sqlalchemy.sim.repo_adapter import RepositoryLegacyAdapter
 from quart_sqlalchemy.sim.util import ObjectID
 from quart_sqlalchemy.sim.util import one

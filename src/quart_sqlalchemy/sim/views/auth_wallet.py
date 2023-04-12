@@ -6,7 +6,6 @@ from dependency_injector.wiring import Provide
 from quart import g
 
 from quart_sqlalchemy.framework import QuartSQLAlchemy
-from quart_sqlalchemy.session import set_global_contextual_session
 
 from ..auth import authorized_request
 from ..auth import RequestCredentials
@@ -70,15 +69,15 @@ def sync(
 ) -> ResponseWrapper[WalletSyncResponse]:
     with db.bind.Session() as session:
         with session.begin():
-            with set_global_contextual_session(session):
-                wallet = auth_wallet_handler.sync_auth_wallet(
-                    credentials.current_user.subject.id,
-                    data.public_address,
-                    data.encrypted_private_address,
-                    WalletManagementType.DELEGATED.value,
-                    network=web3.network,
-                    wallet_type=data.wallet_type,
-                )
+            wallet = auth_wallet_handler.sync_auth_wallet(
+                session,
+                credentials.current_user.subject.id,
+                data.public_address,
+                data.encrypted_private_address,
+                WalletManagementType.DELEGATED.value,
+                network=web3.network,
+                wallet_type=data.wallet_type,
+            )
 
     return ResponseWrapper[WalletSyncResponse](
         data=dict(

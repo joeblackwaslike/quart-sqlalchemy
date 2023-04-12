@@ -6,10 +6,11 @@ import typing as t
 from datetime import datetime
 
 import sqlalchemy
+import sqlalchemy.orm
 from dependency_injector.wiring import Provide
 from quart import Quart
 
-from quart_sqlalchemy.session import SessionProxy
+from quart_sqlalchemy.session import provide_global_contextual_session
 from quart_sqlalchemy.sim import signals
 from quart_sqlalchemy.sim.logic import LogicComponent
 from quart_sqlalchemy.sim.model import AuthUser
@@ -44,14 +45,15 @@ class InvalidSubstringError(AuthUserBaseError):
 
 class HandlerBase:
     logic: LogicComponent = Provide["logic"]
-    session_factory = SessionProxy()
 
 
 class MagicClientHandler(HandlerBase):
     auth_user_handler: AuthUserHandler = Provide["AuthUserHandler"]
 
+    @provide_global_contextual_session
     def add(
         self,
+        session: sa.orm.Session,
         app_name=None,
         rate_limit_tier=None,
         connect_interop=None,
@@ -68,7 +70,7 @@ class MagicClientHandler(HandlerBase):
         """
 
         return self.logic.MagicClient.add(
-            self.session_factory(),
+            session,
             app_name=app_name,
             rate_limit_tier=rate_limit_tier,
             connect_interop=connect_interop,
@@ -76,13 +78,16 @@ class MagicClientHandler(HandlerBase):
             global_audience_enabled=global_audience_enabled,
         )
 
-    def get_by_public_api_key(self, public_api_key):
-        return self.logic.MagicClient.get_by_public_api_key(self.session_factory(), public_api_key)
+    @provide_global_contextual_session
+    def get_by_public_api_key(self, session: sa.orm.Session, public_api_key):
+        return self.logic.MagicClient.get_by_public_api_key(session, public_api_key)
 
-    def get_by_id(self, magic_client_id):
-        return self.logic.MagicClient.get_by_id(self.session_factory(), magic_client_id)
+    @provide_global_contextual_session
+    def get_by_id(self, session: sa.orm.Session, magic_client_id):
+        return self.logic.MagicClient.get_by_id(session, magic_client_id)
 
-    def update_app_name_by_id(self, magic_client_id, app_name):
+    @provide_global_contextual_session
+    def update_app_name_by_id(self, session: sa.orm.Session, magic_client_id, app_name):
         """
         Args:
             magic_client_id (ObjectID|int|str): self explanatory.
@@ -92,23 +97,21 @@ class MagicClientHandler(HandlerBase):
             None if `magic_client_id` doesn't exist in the db
             app_name if update was successful
         """
-        client = self.logic.MagicClient.update_by_id(
-            self.session_factory(), magic_client_id, app_name=app_name
-        )
+        client = self.logic.MagicClient.update_by_id(session, magic_client_id, app_name=app_name)
 
         if not client:
             return None
 
         return client.app_name
 
-    def update_by_id(self, magic_client_id, **kwargs):
-        client = self.logic.MagicClient.update_by_id(
-            self.session_factory(), magic_client_id, **kwargs
-        )
+    @provide_global_contextual_session
+    def update_by_id(self, session: sa.orm.Session, magic_client_id, **kwargs):
+        client = self.logic.MagicClient.update_by_id(session, magic_client_id, **kwargs)
 
         return client
 
-    def set_inactive_by_id(self, magic_client_id):
+    @provide_global_contextual_session
+    def set_inactive_by_id(self, session: sa.orm.Session, magic_client_id):
         """
         Args:
             magic_client_id (ObjectID|int|str): self explanatory.
@@ -116,12 +119,12 @@ class MagicClientHandler(HandlerBase):
         Returns:
             None
         """
-        self.logic.MagicClient.update_by_id(
-            self.session_factory(), magic_client_id, is_active=False
-        )
+        self.logic.MagicClient.update_by_id(session, magic_client_id, is_active=False)
 
+    @provide_global_contextual_session
     def get_users_for_client(
         self,
+        session: sa.orm.Session,
         magic_client_id,
         offset=None,
         limit=None,
@@ -131,6 +134,7 @@ class MagicClientHandler(HandlerBase):
         """
         product_type = get_product_type_by_client_id(magic_client_id)
         auth_users = self.auth_user_handler.get_by_client_id_and_user_type(
+            session,
             magic_client_id,
             product_type,
             offset=offset,
@@ -146,16 +150,18 @@ class MagicClientHandler(HandlerBase):
 
 
 class AuthUserHandler(HandlerBase):
-    def get_by_session_token(self, session_token):
-        return self.logic.AuthUser.get_by_session_token(self.session_factory(), session_token)
+    @provide_global_contextual_session
+    def get_by_session_token(self, session: sa.orm.Session, session_token):
+        return self.logic.AuthUser.get_by_session_token(session, session_token)
 
+    @provide_global_contextual_session
     def get_or_create_by_email_and_client_id(
         self,
+        session: sa.orm.Session,
         email,
         client_id,
         user_type=EntityType.MAGIC.value,
     ):
-        session = self.session_factory()
         with session.begin_nested():
             auth_user = self.logic.AuthUser.get_by_email_and_client_id(
                 session,
@@ -173,14 +179,15 @@ class AuthUserHandler(HandlerBase):
                 )
         return auth_user
 
+    @provide_global_contextual_session
     def create_verified_user(
         self,
+        session: sa.orm.Session,
         client_id,
         email,
         user_type=EntityType.FORTMATIC.value,
         **kwargs,
     ):
-        session = self.session_factory()
         with session.begin_nested():
             auid = self.logic.AuthUser.add_by_email_and_client_id(
                 session,
@@ -201,52 +208,66 @@ class AuthUserHandler(HandlerBase):
 
         return auth_user
 
-    def get_by_id(self, auth_user_id) -> AuthUser:
-        return self.logic.AuthUser.get_by_id(self.session_factory(), auth_user_id)
+    @provide_global_contextual_session
+    def get_by_id(self, session: sa.orm.Session, auth_user_id) -> AuthUser:
+        return self.logic.AuthUser.get_by_id(session, auth_user_id)
 
+    @provide_global_contextual_session
     def get_by_client_id_and_user_type(
         self,
+        session: sa.orm.Session,
         client_id,
         user_type,
         offset=None,
         limit=None,
     ):
         return self.logic.AuthUser.get_by_client_id_and_user_type(
-            self.session_factory(),
+            session,
             client_id,
             user_type,
             offset=offset,
             limit=limit,
         )
 
-    def exist_by_email_client_id_and_user_type(self, email, client_id, user_type):
+    @provide_global_contextual_session
+    def exist_by_email_client_id_and_user_type(
+        self, session: sa.orm.Session, email, client_id, user_type
+    ):
         return self.logic.AuthUser.exist_by_email_and_client_id(
-            self.session_factory(),
+            session,
             email,
             client_id,
             user_type=user_type,
         )
 
-    def update_email_by_id(self, model_id, email):
-        return self.logic.AuthUser.update_by_id(self.session_factory(), model_id, email=email)
+    @provide_global_contextual_session
+    def update_email_by_id(self, session: sa.orm.Session, model_id, email):
+        return self.logic.AuthUser.update_by_id(session, model_id, email=email)
 
-    def get_by_email_client_id_and_user_type(self, email, client_id, user_type):
+    @provide_global_contextual_session
+    def get_by_email_client_id_and_user_type(
+        self, session: sa.orm.Session, email, client_id, user_type
+    ):
         return self.logic.AuthUser.get_by_email_and_client_id(
-            self.session_factory(),
+            session,
             email,
             client_id,
             user_type,
         )
 
-    def mark_date_verified_by_id(self, model_id):
+    @provide_global_contextual_session
+    def mark_date_verified_by_id(self, session: sa.orm.Session, model_id):
         return self.logic.AuthUser.update_by_id(
-            self.session_factory(),
+            session,
             model_id,
             date_verified=datetime.utcnow(),
         )
 
-    def set_role_by_email_magic_client_id(self, email, magic_client_id, role):
-        session = self.session_factory()
+    @provide_global_contextual_session
+    def set_role_by_email_magic_client_id(
+        self, session: sa.orm.Session, email, magic_client_id, role
+    ):
+        session = session
         auth_user = self.logic.AuthUser.get_by_email_and_client_id(
             session,
             email,
@@ -267,8 +288,9 @@ class AuthUserHandler(HandlerBase):
 
         return self.logic.AuthUser.update_by_id(session, auth_user.id, **{role: True})
 
-    def mark_as_inactive(self, auth_user_id):
-        self.logic.AuthUser.update_by_id(self.session_factory(), auth_user_id, is_active=False)
+    @provide_global_contextual_session
+    def mark_as_inactive(self, session: sa.orm.Session, auth_user_id):
+        self.logic.AuthUser.update_by_id(session, auth_user_id, is_active=False)
 
 
 @signals.auth_user_duplicate.connect
@@ -282,29 +304,35 @@ def handle_duplicate_auth_users(
 
 
 class AuthWalletHandler(HandlerBase):
-    def get_by_id(self, model_id):
-        return self.logic.AuthWallet.get_by_id(self.session_factory(), model_id)
+    @provide_global_contextual_session
+    def get_by_id(self, session: sa.orm.Session, model_id):
+        return self.logic.AuthWallet.get_by_id(session, model_id)
 
-    def get_by_public_address(self, public_address):
-        return self.logic.AuthWallet().get_by_public_address(self.session_factory(), public_address)
+    @provide_global_contextual_session
+    def get_by_public_address(self, session: sa.orm.Session, public_address):
+        return self.logic.AuthWallet().get_by_public_address(session, public_address)
 
+    @provide_global_contextual_session
     def get_by_auth_user_id(
         self,
+        session: sa.orm.Session,
         auth_user_id: ObjectID,
         network: t.Optional[str] = None,
         wallet_type: t.Optional[WalletType] = None,
         **kwargs,
     ) -> t.List[AuthWallet]:
         return self.logic.AuthWallet.get_by_auth_user_id(
-            self.session_factory(),
+            session,
             auth_user_id,
             network=network,
             wallet_type=wallet_type,
             **kwargs,
         )
 
+    @provide_global_contextual_session
     def sync_auth_wallet(
         self,
+        session: sa.orm.Session,
         auth_user_id,
         public_address,
         encrypted_private_address,
@@ -312,7 +340,6 @@ class AuthWalletHandler(HandlerBase):
         network: t.Optional[str] = None,
         wallet_type: t.Optional[WalletType] = None,
     ):
-        session = self.session_factory()
         with session.begin_nested():
             existing_wallet = self.logic.AuthWallet.get_by_auth_user_id(
                 session,

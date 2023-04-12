@@ -6,7 +6,6 @@ from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
 
 from quart_sqlalchemy.framework import QuartSQLAlchemy
-from quart_sqlalchemy.session import set_global_contextual_session
 
 from ..auth import authorized_request
 from ..auth import RequestCredentials
@@ -51,8 +50,7 @@ def get_auth_user(
     credentials: RequestCredentials = Provide["request_credentials"],
 ) -> ResponseWrapper[AuthUserSchema]:
     with db.bind.Session() as session:
-        with set_global_contextual_session(session):
-            auth_user = auth_user_handler.get_by_session_token(credentials.current_user.value)
+        auth_user = auth_user_handler.get_by_session_token(session, credentials.current_user.value)
 
     return ResponseWrapper[AuthUserSchema](data=AuthUserSchema.from_orm(auth_user))
 
@@ -76,12 +74,12 @@ def create_auth_user(
 ) -> ResponseWrapper[CreateAuthUserResponse]:
     with db.bind.Session() as session:
         with session.begin():
-            with set_global_contextual_session(session):
-                client = auth_user_handler.create_verified_user(
-                    email=data.email,
-                    client_id=credentials.current_client.subject.id,
-                    user_type=EntityType.MAGIC.value,
-                )
+            client = auth_user_handler.create_verified_user(
+                session,
+                email=data.email,
+                client_id=credentials.current_client.subject.id,
+                user_type=EntityType.MAGIC.value,
+            )
 
     return ResponseWrapper[CreateAuthUserResponse](
         data=dict(auth_user=AuthUserSchema.from_orm(client))  # type: ignore
