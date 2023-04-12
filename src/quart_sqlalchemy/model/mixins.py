@@ -301,7 +301,7 @@ def accumulate_mappings(class_, attribute) -> t.Dict[str, t.Any]:
         if base_class is class_:
             continue
         args = getattr(base_class, attribute, {})
-        accumulated.update(args)
+        accumulated |= args
 
     return accumulated
 
@@ -316,7 +316,7 @@ def accumulate_tuples_with_mapping(class_, attribute) -> t.Sequence[t.Any]:
         args = getattr(base_class, attribute, ())
         for arg in args:
             if isinstance(arg, t.Mapping):
-                accumulated_map.update(arg)
+                accumulated_map |= arg
             else:
                 accumulated_args.append(arg)
 
