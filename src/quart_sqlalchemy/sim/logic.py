@@ -227,43 +227,6 @@ class AuthUser(LogicComponent[auth_user_model, ObjectID, sa.orm.Session]):
         )
 
     @provide_global_contextual_session
-    def get_or_add_by_phone_number_and_client_id(
-        self,
-        session,
-        client_id,
-        phone_number,
-        user_type=EntityType.FORTMATIC.value,
-    ):
-        if phone_number is None:
-            raise MissingPhoneNumber()
-
-        row = self.get_by_phone_number_and_client_id(
-            session=session,
-            phone_number=phone_number,
-            client_id=client_id,
-            user_type=user_type,
-        )
-
-        if row:
-            return row
-
-        row = self._repository.add(
-            session=session,
-            phone_number=phone_number,
-            client_id=client_id,
-            user_type=user_type,
-            provenance=Provenance.SMS,
-        )
-        logger.info(
-            "New auth user (id: {}) created by phone number (client_id: {})".format(
-                row.id,
-                client_id,
-            ),
-        )
-
-        return row
-
-    @provide_global_contextual_session
     def get_by_active_identifier_and_client_id(
         self,
         session,
@@ -317,25 +280,6 @@ class AuthUser(LogicComponent[auth_user_model, ObjectID, sa.orm.Session]):
             client_id=client_id,
             user_type=user_type,
             for_update=for_update,
-        )
-
-    @provide_global_contextual_session
-    def get_by_phone_number_and_client_id(
-        self,
-        session,
-        phone_number,
-        client_id,
-        user_type=EntityType.FORTMATIC.value,
-    ):
-        if phone_number is None:
-            raise MissingPhoneNumber()
-
-        return self.get_by_active_identifier_and_client_id(
-            session=session,
-            identifier_field=auth_user_model.phone_number,
-            identifier_value=phone_number,
-            client_id=client_id,
-            user_type=user_type,
         )
 
     @provide_global_contextual_session
@@ -393,17 +337,6 @@ class AuthUser(LogicComponent[auth_user_model, ObjectID, sa.orm.Session]):
         return session.execute(query).scalar()
 
     @provide_global_contextual_session
-    def get_by_client_id_and_global_auth_user(self, session, client_id, global_auth_user_id):
-        return self._repository.get_by(
-            session=session,
-            filters=[
-                auth_user_model.client_id == client_id,
-                auth_user_model.user_type == EntityType.CONNECT.value,
-                auth_user_model.global_auth_user_id == global_auth_user_id,
-            ],
-        )
-
-    @provide_global_contextual_session
     def get_by_client_id_and_user_type(
         self,
         session,
@@ -418,61 +351,6 @@ class AuthUser(LogicComponent[auth_user_model, ObjectID, sa.orm.Session]):
             user_type,
             offset=offset,
             limit=limit,
-        )
-
-    @provide_global_contextual_session
-    def get_by_client_ids_and_user_type(
-        self,
-        session,
-        client_ids,
-        user_type,
-        offset=None,
-        limit=None,
-    ):
-        if not client_ids:
-            return []
-
-        return self._repository.get_by(
-            session,
-            filters=[
-                auth_user_model.client_id.in_(client_ids),
-                auth_user_model.user_type == user_type,
-                auth_user_model.date_verified != None,
-            ],
-            offset=offset,
-            limit=limit,
-            order_by_clause=auth_user_model.id.desc(),
-        )
-
-    @provide_global_contextual_session
-    def get_by_client_id_with_substring_search(
-        self,
-        session,
-        client_id,
-        substring,
-        offset=None,
-        limit=10,
-        join_list=None,
-    ):
-        return self._repository.get_by(
-            session,
-            filters=[
-                auth_user_model.client_id == client_id,
-                auth_user_model.user_type == EntityType.MAGIC.value,
-                sa.or_(
-                    auth_user_model.provenance == Provenance.SMS,
-                    auth_user_model.provenance == Provenance.LINK,
-                    auth_user_model.provenance == None,  # noqa: E711
-                ),
-                sa.or_(
-                    auth_user_model.phone_number.contains(substring),
-                    auth_user_model.email.contains(substring),
-                ),
-            ],
-            offset=offset,
-            limit=limit,
-            order_by_clause=auth_user_model.id.desc(),
-            join_list=join_list,
         )
 
     @provide_global_contextual_session
@@ -516,72 +394,6 @@ class AuthUser(LogicComponent[auth_user_model, ObjectID, sa.orm.Session]):
             filters=combined_filters,
             for_update=for_update,
             join_list=join_list,
-        )
-
-    @provide_global_contextual_session
-    def get_by_email_for_interop(
-        self,
-        session,
-        email: str,
-        wallet_type: WalletType,
-        network: str,
-    ) -> t.List[auth_user_model]:
-        """
-        Custom method for searching for users eligible for interop. Unfortunately, this can't be done with the current
-        abstractions in our sql_repository, so this is a one-off bespoke method.
-        If we need to add more similar queries involving eager loading and multiple joins, we can add an abstraction
-        inside the repository.
-        """
-
-        query = (
-            session.query(auth_user_model)
-            .join(
-                auth_user_model.wallets.and_(
-                    auth_wallet_model.wallet_type == str(wallet_type)
-                ).and_(auth_wallet_model.network == network)
-            )
-            .options(sa.orm.contains_eager(auth_user_model.wallets))
-            .join(
-                auth_user_model.magic_client.and_(
-                    magic_client_model.connect_interop == ConnectInteropStatus.ENABLED,
-                ),
-            )
-            .options(sa.orm.contains_eager(auth_user_model.magic_client))
-            .filter(
-                auth_wallet_model.wallet_type == wallet_type,
-                auth_wallet_model.network == network,
-            )
-            .filter(
-                auth_user_model.email == email,
-                auth_user_model.user_type == EntityType.MAGIC.value,
-            )
-            .populate_existing()
-        )
-
-        return query.all()
-
-    @provide_global_contextual_session
-    def get_linked_users(self, session, primary_auth_user_id, join_list, no_op=False):
-        # TODO(magic-ravi#67899|2022-12-30): Re-enable account linked users for interop. Remove no_op flag.
-        if no_op:
-            return []
-        else:
-            return self._repository.get_by(
-                session,
-                filters=[
-                    auth_user_model.user_type == EntityType.MAGIC.value,
-                    auth_user_model.linked_primary_auth_user_id == primary_auth_user_id,
-                ],
-                join_list=join_list,
-            )
-
-    @provide_global_contextual_session
-    def get_by_phone_number(self, session, phone_number):
-        return self._repository.get_by(
-            session,
-            filters=[
-                auth_user_model.phone_number == phone_number,
-            ],
         )
 
 

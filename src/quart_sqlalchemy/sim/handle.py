@@ -173,16 +173,6 @@ class AuthUserHandler(HandlerBase):
                 )
         return auth_user
 
-    def get_by_id_and_validate_exists(self, auth_user_id):
-        """This function helps formalize how a non-existent auth user should be handled."""
-        auth_user = self.logic.AuthUser.get_by_id(self.session_factory(), auth_user_id)
-        if auth_user is None:
-            raise RuntimeError('resource_name="auth_user"')
-        return auth_user
-
-    # This function is reserved for consolidating into a canonical user. Do not
-    # call this function under other circumstances as it will automatically set
-    # the user as verified. See ch-25343 for additional details.
     def create_verified_user(
         self,
         client_id,
@@ -190,8 +180,6 @@ class AuthUserHandler(HandlerBase):
         user_type=EntityType.FORTMATIC.value,
         **kwargs,
     ):
-        # with self.session_factory() as session:
-        # with self.logic.begin(ro=False) as session:
         session = self.session_factory()
         with session.begin_nested():
             auid = self.logic.AuthUser.add_by_email_and_client_id(
@@ -231,21 +219,6 @@ class AuthUserHandler(HandlerBase):
             limit=limit,
         )
 
-    def get_by_client_ids_and_user_type(
-        self,
-        client_ids,
-        user_type,
-        offset=None,
-        limit=None,
-    ):
-        return self.logic.AuthUser.get_by_client_ids_and_user_type(
-            self.session_factory(),
-            client_ids,
-            user_type,
-            offset=offset,
-            limit=limit,
-        )
-
     def exist_by_email_client_id_and_user_type(self, email, client_id, user_type):
         return self.logic.AuthUser.exist_by_email_and_client_id(
             self.session_factory(),
@@ -256,11 +229,6 @@ class AuthUserHandler(HandlerBase):
 
     def update_email_by_id(self, model_id, email):
         return self.logic.AuthUser.update_by_id(self.session_factory(), model_id, email=email)
-
-    def update_phone_number_by_id(self, model_id, phone_number):
-        return self.logic.AuthUser.update_by_id(
-            self.session_factory(), model_id, phone_number=phone_number
-        )
 
     def get_by_email_client_id_and_user_type(self, email, client_id, user_type):
         return self.logic.AuthUser.get_by_email_and_client_id(
@@ -299,54 +267,8 @@ class AuthUserHandler(HandlerBase):
 
         return self.logic.AuthUser.update_by_id(session, auth_user.id, **{role: True})
 
-    def search_by_client_id_and_substring(
-        self,
-        client_id,
-        substring,
-        offset=None,
-        limit=10,
-    ):
-        if not isinstance(substring, str) or len(substring) < 3:
-            raise InvalidSubstringError()
-
-        auth_users = self.logic.AuthUser.get_by_client_id_with_substring_search(
-            self.session_factory(),
-            client_id,
-            substring,
-            offset=offset,
-            limit=limit,
-        )
-
-        return auth_users
-
-    def is_magic_connect_enabled(self, auth_user_id=None, auth_user=None):
-        if auth_user is None and auth_user_id is None:
-            raise Exception("At least one argument needed: auth_user_id or auth_user.")
-
-        if auth_user is None:
-            auth_user = self.get_by_id(auth_user_id)
-
-        return auth_user.user_type == EntityType.CONNECT.value
-
     def mark_as_inactive(self, auth_user_id):
         self.logic.AuthUser.update_by_id(self.session_factory(), auth_user_id, is_active=False)
-
-    def get_by_email_and_wallet_type_for_interop(self, email, wallet_type, network):
-        """
-        Opinionated method for fetching AuthWallets by email address, wallet_type and network.
-        """
-        return self.logic.AuthUser.get_by_email_for_interop(
-            self.session_factory(),
-            email=email,
-            wallet_type=wallet_type,
-            network=network,
-        )
-
-    def get_magic_connect_auth_user(self, auth_user_id):
-        auth_user = self.get_by_id_and_validate_exists(auth_user_id)
-        if not auth_user.is_magic_connect_user:
-            raise RuntimeError("RequestForbidden")
-        return auth_user
 
 
 @signals.auth_user_duplicate.connect
@@ -355,12 +277,7 @@ def handle_duplicate_auth_users(
     original_auth_user_id: ObjectID,
     duplicate_auth_user_ids: t.Sequence[ObjectID],
 ) -> None:
-    logger.info(f"{len(duplicate_auth_user_ids)} dupe(s) found for {original_auth_user_id}")
-
     for dupe_id in duplicate_auth_user_ids:
-        logger.info(
-            f"marking auth_user_id {dupe_id} as inactive, in favor of original {original_auth_user_id}",
-        )
         app.container.logic().AuthUser.update_by_id(dupe_id, is_active=False)
 
 

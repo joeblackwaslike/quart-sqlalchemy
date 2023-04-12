@@ -29,6 +29,10 @@ class AbstractRepository(t.Generic[EntityT, EntityIdT, SessionT], metaclass=ABCM
     model: t.Type[EntityT]
     identity: t.Type[EntityIdT]
 
+    def __init__(self, model: t.Type[EntityT], identity: t.Type[EntityIdT]):
+        self.model = model
+        self.identity = identity
+
 
 class AbstractBulkRepository(t.Generic[EntityT, EntityIdT, SessionT], metaclass=ABCMeta):
     """A repository interface for bulk operations.
@@ -39,6 +43,10 @@ class AbstractBulkRepository(t.Generic[EntityT, EntityIdT, SessionT], metaclass=
 
     model: t.Type[EntityT]
     identity: t.Type[EntityIdT]
+
+    def __init__(self, model: t.Type[EntityT], identity: t.Type[EntityIdT]):
+        self.model = model
+        self.identity = identity
 
 
 class SQLAlchemyRepository(
@@ -68,10 +76,22 @@ class SQLAlchemyRepository(
 
     builder: StatementBuilder
 
-    def __init__(self, model: t.Type[EntityT], identity: t.Type[EntityIdT]):
-        self.model = model
-        self.identity = identity
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.builder = StatementBuilder(self.model)
+
+    def _build_execution_options(
+        self,
+        execution_options: t.Optional[t.Dict[str, t.Any]] = None,
+        include_inactive: bool = False,
+        yield_by_chunk: bool = False,
+    ):
+        execution_options = execution_options or {}
+        if include_inactive:
+            execution_options.setdefault("include_inactive", include_inactive)
+        if yield_by_chunk:
+            execution_options.setdefault("yield_per", yield_by_chunk)
+        return execution_options
 
     def insert(self, session: sa.orm.Session, values: t.Dict[str, t.Any]) -> EntityT:
         """Insert a new model into the database."""
@@ -141,9 +161,12 @@ class SQLAlchemyRepository(
         """
         selectables = (self.model,)
 
-        execution_options = execution_options or {}
-        if include_inactive:
-            execution_options.setdefault("include_inactive", include_inactive)
+        execution_options = self._build_execution_options(
+            execution_options, include_inactive=include_inactive
+        )
+        # execution_options = execution_options or {}
+        # if include_inactive:
+        #     execution_options.setdefault("include_inactive", include_inactive)
 
         statement = self.builder.select(
             selectables,  # type: ignore
@@ -173,9 +196,12 @@ class SQLAlchemyRepository(
         """Select models where field is equal to value."""
         selectables = (self.model,)
 
-        execution_options = execution_options or {}
-        if include_inactive:
-            execution_options.setdefault("include_inactive", include_inactive)
+        execution_options = self._build_execution_options(
+            execution_options, include_inactive=include_inactive
+        )
+        # execution_options = execution_options or {}
+        # if include_inactive:
+        #     execution_options.setdefault("include_inactive", include_inactive)
 
         if isinstance(field, str):
             field = getattr(self.model, field)
@@ -217,11 +243,16 @@ class SQLAlchemyRepository(
         """
         selectables = selectables or (self.model,)  # type: ignore
 
-        execution_options = execution_options or {}
-        if include_inactive:
-            execution_options.setdefault("include_inactive", include_inactive)
-        if yield_by_chunk:
-            execution_options.setdefault("yield_per", yield_by_chunk)
+        execution_options = self._build_execution_options(
+            execution_options,
+            include_inactive=include_inactive,
+            yield_by_chunk=yield_by_chunk,
+        )
+        # execution_options = execution_options or {}
+        # if include_inactive:
+        #     execution_options.setdefault("include_inactive", include_inactive)
+        # if yield_by_chunk:
+        #     execution_options.setdefault("yield_per", yield_by_chunk)
 
         statement = self.builder.select(
             selectables,
@@ -271,9 +302,10 @@ class SQLAlchemyRepository(
         """
         selectables = (sa.sql.literal(True),)
 
-        execution_options = {}
-        if include_inactive:
-            execution_options.setdefault("include_inactive", include_inactive)
+        execution_options = self._build_execution_options(None, include_inactive=include_inactive)
+        # execution_options = {}
+        # if include_inactive:
+        #     execution_options.setdefault("include_inactive", include_inactive)
 
         statement = self.builder.select(
             selectables,
