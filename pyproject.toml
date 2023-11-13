@@ -1,0 +1,100 @@
+[project]
+name = "quart-sqlalchemy"
+version = "2.0.1"
+description = ""
+authors = [
+    {name = "Joe Black", email = "me@joeblack.nyc"},
+]
+dependencies = [
+    "quart<0.20.0,>=0.18.3",
+    "werkzeug<3.1.0,>=2.2.0",
+    "blinker<1.7,>=1.5",
+    "SQLAlchemy[asyncio]<2.1.0,>=2.0.0",
+    "anyio~=3.3.4",
+]
+requires-python = ">=3.8"
+readme = "README.rst"
+license = {text = "MIT"}
+
+[project.urls]
+"Homepage" = "https://github.com/joeblackwaslike/quart-sqlalchemy"
+"Bug Tracker" = "https://github.com/joeblackwaslike/quart-sqlalchemy/issues"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-asyncio @ https://github.com/joeblackwaslike/pytest-asyncio/releases/download/v0.20.4.dev42/pytest_asyncio-0.20.4.dev42-py3-none-any.whl",
+    "pytest-mock>=3.12.0",
+    "pytest-cov>=4.1.0",
+    "coverage[toml]>=7.3.2",
+    "aiosqlite>=0.19.0",
+    "pre-commit>=3.5.0",
+    "tox>=4.11.3",
+    "tox-pdm>=0.7.0",
+    "mypy>=1.7.0",
+    "ruff>=0.1.5",
+]
+
+
+
+[tool.pdm.build]
+source-includes = [
+    "docs/",
+    "tests/",
+    "CHANGES.rst",
+    "pdm.lock",
+    "tox.ini",
+]
+excludes = [
+    "docs/_build",
+]
+
+
+[tool.pytest.ini_options]
+addopts = "-rsx --tb=short --loop-scope session"
+testpaths = ["tests"]
+filterwarnings = ["error"]
+asyncio_mode = "auto"
+py311_task = true
+log_cli = true
+
+
+[tool.coverage.run]
+branch = true
+source = ["src", "tests"]
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.isort]
+profile = "black"
+src_paths = ["src", "tests", "examples"]
+force_single_line = true
+use_parentheses = true
+atomic = true
+lines_after_imports = 2
+line_length = 100
+order_by_type = false
+known_first_party = ["quart_sqlalchemy", "tests"]
+
+[tool.mypy]
+python_version = "3.8"
+files = ["src/quart_sqlalchemy", "tests"]
+show_error_codes = true
+pretty = true
+strict = true
+# db.Model attribute doesn't recognize subclassing
+disable_error_code = ["name-defined"]
+# db.Model is Any
+disallow_subclassing_any = false
+
+[[tool.mypy.overrides]]
+module = [
+    "cryptography.*",
+    "importlib_metadata.*",
+]
+ignore_missing_imports = true
