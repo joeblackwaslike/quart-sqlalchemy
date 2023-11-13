@@ -31,7 +31,7 @@ jobs:
           - {name: '3.7', python: '3.7', tox: py37}
           - {name: 'Typing', python: '3.10', os: ubuntu-latest, tox: typing}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python }}
