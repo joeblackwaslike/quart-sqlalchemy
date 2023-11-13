@@ -106,11 +106,14 @@ class RecursiveDictMixin:
 
         mapper = sa.inspect(obj).mapper
         columns = [column.key for column in mapper.columns]
-        get_key_value = (
-            lambda c: (c, getattr(obj, c).isoformat())
-            if isinstance(getattr(obj, c), datetime)
-            else (c, getattr(obj, c))
-        )
+
+        def get_key_value(c):
+            return (
+                (c, getattr(obj, c).isoformat())
+                if isinstance(getattr(obj, c), datetime)
+                else (c, getattr(obj, c))
+            )
+
         data = dict(map(get_key_value, columns))
 
         if max_depth > 0:
@@ -125,7 +128,9 @@ class RecursiveDictMixin:
                 if relationship_children is not None:
                     if relation.uselist:
                         children = []
-                        for child in (c for c in relationship_children if c not in _children_seen):
+                        for child in (
+                            c for c in relationship_children if c not in _children_seen
+                        ):
                             _children_seen.add(child)
                             children.append(
                                 self.model_to_dict(
@@ -148,7 +153,9 @@ class RecursiveDictMixin:
 
 
 class IdentityMixin:
-    id: Mapped[int] = sa.orm.mapped_column(sa.Identity(), primary_key=True, autoincrement=True)
+    id: Mapped[int] = sa.orm.mapped_column(
+        sa.Identity(), primary_key=True, autoincrement=True
+    )
 
 
 class SoftDeleteMixin:

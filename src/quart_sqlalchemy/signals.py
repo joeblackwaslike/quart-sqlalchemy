@@ -3,16 +3,14 @@ from __future__ import annotations
 import sqlalchemy
 import sqlalchemy.orm
 from blinker import Namespace
-from quart.signals import AsyncNamespace
 
 
 sa = sqlalchemy
 
-sync_signals = Namespace()
-async_signals = AsyncNamespace()
+_signals = Namespace()
 
 
-before_bind_engine_created = sync_signals.signal(
+before_bind_engine_created = _signals.signal(
     "quart-sqlalchemy.bind.engine.created.before",
     doc="""Called before a bind creates an engine.
 
@@ -25,7 +23,7 @@ before_bind_engine_created = sync_signals.signal(
             ...
     """,
 )
-after_bind_engine_created = sync_signals.signal(
+after_bind_engine_created = _signals.signal(
     "quart-sqlalchemy.bind.engine.created.after",
     doc="""Called after a bind creates an engine.
 
@@ -40,7 +38,7 @@ after_bind_engine_created = sync_signals.signal(
     """,
 )
 
-before_bind_session_factory_created = sync_signals.signal(
+before_bind_session_factory_created = _signals.signal(
     "quart-sqlalchemy.bind.session_factory.created.before",
     doc="""Called before a bind creates a session_factory.
 
@@ -49,7 +47,7 @@ before_bind_session_factory_created = sync_signals.signal(
             ...
     """,
 )
-after_bind_session_factory_created = sync_signals.signal(
+after_bind_session_factory_created = _signals.signal(
     "quart-sqlalchemy.bind.session_factory.created.after",
     doc="""Called after a bind creates a session_factory.
 
@@ -64,7 +62,7 @@ after_bind_session_factory_created = sync_signals.signal(
 )
 
 
-bind_context_entered = sync_signals.signal(
+bind_context_entered = _signals.signal(
     "quart-sqlalchemy.bind.context.entered",
     doc="""Called when a bind context is entered.
 
@@ -79,7 +77,7 @@ bind_context_entered = sync_signals.signal(
     """,
 )
 
-bind_context_exited = sync_signals.signal(
+bind_context_exited = _signals.signal(
     "quart-sqlalchemy.bind.context.exited",
     doc="""Called when a bind context is exited.
 
@@ -95,7 +93,7 @@ bind_context_exited = sync_signals.signal(
 )
 
 
-before_framework_extension_initialization = sync_signals.signal(
+before_framework_extension_initialization = _signals.signal(
     "quart-sqlalchemy.framework.extension.initialization.before",
     doc="""Fired before SQLAlchemy.init_app(app) is called.
     
@@ -104,7 +102,7 @@ before_framework_extension_initialization = sync_signals.signal(
             ...
     """,
 )
-after_framework_extension_initialization = sync_signals.signal(
+after_framework_extension_initialization = _signals.signal(
     "quart-sqlalchemy.framework.extension.initialization.after",
     doc="""Fired after SQLAlchemy.init_app(app) is called.
     

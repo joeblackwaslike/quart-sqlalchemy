@@ -1,22 +1,23 @@
 [project]
 name = "quart-sqlalchemy"
-version = "3.0.2"
+version = "3.0.3"
 description = "SQLAlchemy for humans, with framework adapter for Quart."
 authors = [
     {name = "Joe Black", email = "me@joeblack.nyc"},
 ]
 dependencies = [
-    "quart>=0.18.3",
-    "SQLAlchemy[asyncio]>=1.4.35, <2.1.0",
+    "quart<0.20.0,>=0.18.3",
+    "werkzeug<3.1.0,>=2.2.0",
+    "blinker<1.7,>=1.5",
+    "SQLAlchemy[asyncio]<2.1.0,>=2.0.0",
     "SQLAlchemy-Utils",
-    "anyio",
-    "aiosqlite",
-    "pydantic",
-    "tenacity",
+    "anyio~=3.3.4",
+    "pydantic~=1.10.13",
+    "tenacity~=8.0.1",
     "sqlapagination",
-    "exceptiongroup"
+    "exceptiongroup",
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 readme = "README.rst"
 license = {text = "MIT"}
 
@@ -24,41 +25,32 @@ license = {text = "MIT"}
 "Homepage" = "https://github.com/joeblackwaslike/quart-sqlalchemy"
 "Bug Tracker" = "https://github.com/joeblackwaslike/quart-sqlalchemy/issues"
 
+
 [build-system]
-requires = ["setuptools", "setuptools-scm"]
-build-backend = "setuptools.build_meta"
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
 
 
-[project.optional-dependencies]
-tests = [
-    "pytest",
-    # "pytest-asyncio~=0.20.3",
-    # "pytest-asyncio @ https://github.com/joeblackwaslike/pytest-asyncio/releases/download/v0.20.4.dev42/pytest_asyncio-0.20.4.dev42-py3-none-any.whl",
-    "pytest-asyncio @ https://github.com/joeblackwaslike/pytest-asyncio/releases/download/v0.20.4.dev43/pytest_asyncio-0.20.4.dev43-py3-none-any.whl",
-    "pytest-mock",
-    "pytest-cov",
-    "coverage[toml]",
-]
+[tool.pdm.dev-dependencies]
 dev = [
-    "pre-commit",
-    "tox",
-    "tox-pdm",
-    "mypy",
-    "wemake-python-styleguide",
-    "IPython",
-    "black",
+    "pytest>=7.4.3",
+    # "pytest-asyncio~=0.20.3",
+    "pytest-asyncio @ https://github.com/joeblackwaslike/pytest-asyncio/releases/download/v0.20.4.dev42/pytest_asyncio-0.20.4.dev42-py3-none-any.whl",
+    "pytest-mock>=3.12.0",
+    "pytest-cov>=4.1.0",
+    "coverage[toml]>=7.3.2",
+    "aiosqlite>=0.19.0",
+    "pre-commit>=3.5.0",
+    "tox>=4.11.3",
+    "tox-pdm>=0.7.0",
+    "mypy>=1.7.0",
+    "ruff>=0.1.5",
 ]
-docs = [
-    "sphinx",
-    "pallets-sphinx-themes",
-    "sphinx-issues",
-    "sphinxcontrib-log-cabinet",
-]
+
 
 [tool.pdm.build]
 source-includes = [
     "docs/",
-    # "examples/",
     "tests/",
     "CHANGES.rst",
     "pdm.lock",

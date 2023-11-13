@@ -22,3 +22,4 @@ old
 examples/two/
 *.sqlite
 *.db
+.pdm-python
