@@ -1,4 +1,4 @@
-__version__ = "3.0.3"
+__version__ = "3.0.4"
 
 from .bind import AsyncBind
 from .bind import Bind
