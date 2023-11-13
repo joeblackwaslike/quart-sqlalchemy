@@ -231,13 +231,17 @@ class SQLAlchemy:
 
             app.shell_context_processor(add_models_to_shell)
 
-        basic_uri: str | sa.URL | None = app.config.setdefault("SQLALCHEMY_DATABASE_URI", None)
-        basic_engine_options = self._engine_options.copy()
-        basic_engine_options.update(app.config.setdefault("SQLALCHEMY_ENGINE_OPTIONS", {}))
-        echo: bool = app.config.setdefault("SQLALCHEMY_ECHO", False)
-        config_binds: dict[str | None, str | sa.URL | dict[str, t.Any]] = app.config.setdefault(
-            "SQLALCHEMY_BINDS", {}
+        basic_uri: str | sa.URL | None = app.config.setdefault(
+            "SQLALCHEMY_DATABASE_URI", None
         )
+        basic_engine_options = self._engine_options.copy()
+        basic_engine_options.update(
+            app.config.setdefault("SQLALCHEMY_ENGINE_OPTIONS", {})
+        )
+        echo: bool = app.config.setdefault("SQLALCHEMY_ECHO", False)
+        config_binds: dict[
+            str | None, str | sa.URL | dict[str, t.Any]
+        ] = app.config.setdefault("SQLALCHEMY_BINDS", {})
         engine_options: dict[str | None, dict[str, t.Any]] = {}
 
         # Build the engine config for each bind key.
@@ -406,7 +410,9 @@ class SQLAlchemy:
             naming_convention = None
 
         # Set the bind key in info to be used by session.get_bind.
-        metadata = sa.MetaData(naming_convention=naming_convention, info={"bind_key": bind_key})
+        metadata = sa.MetaData(
+            naming_convention=naming_convention, info={"bind_key": bind_key}
+        )
         self.metadatas[bind_key] = metadata
         return metadata
 
@@ -419,7 +425,9 @@ class SQLAlchemy:
         """
 
         class Table(_Table):
-            def __new__(cls, *args: t.Any, bind_key: str | None = None, **kwargs: t.Any) -> Table:
+            def __new__(
+                cls, *args: t.Any, bind_key: str | None = None, **kwargs: t.Any
+            ) -> Table:
                 # If a metadata arg is passed, go directly to the base Table. Also do
                 # this for no args so the correct error is shown.
                 if not args or (len(args) >= 2 and isinstance(args[1], sa.MetaData)):
@@ -430,7 +438,9 @@ class SQLAlchemy:
 
         return Table
 
-    def _make_declarative_base(self, model: type[Model] | sa.orm.DeclarativeMeta) -> type[t.Any]:
+    def _make_declarative_base(
+        self, model: type[CustomModel] | sa.orm.DeclarativeMeta
+    ) -> type[t.Any]:
         """Create a SQLAlchemy declarative model class. The result is available as
         :attr:`Model`.
 
@@ -556,7 +566,11 @@ class SQLAlchemy:
 
         url = sa.make_url(options["url"])
         is_async = url.get_dialect().is_async
-        factory = sa.ext.asyncio.async_engine_from_config if is_async else sa.engine_from_config
+        factory = (
+            sa.ext.asyncio.async_engine_from_config
+            if is_async
+            else sa.engine_from_config
+        )
         context = EngineContext(
             bind_key=bind_key,
             options=options,
@@ -628,7 +642,9 @@ class SQLAlchemy:
             except RuntimeError:
                 apps = tuple(app_engines.keys())
                 if len(apps) > 1:
-                    raise RuntimeError("No application context, multiple applications registered")
+                    raise RuntimeError(
+                        "No application context, multiple applications registered"
+                    )
                 app = apps[0]
             except:
                 raise RuntimeError("No application context, no application registered")
@@ -642,13 +658,18 @@ class SQLAlchemy:
         execution_options: t.Optional[dict[str, t.Any]] = None,
         app: t.Optional[Quart] = None,
     ) -> BindContext:
-        return BindContext(self, app, bind_key, execution_options=execution_options or {})
+        return BindContext(
+            self, app, bind_key, execution_options=execution_options or {}
+        )
 
     def _get_app_context(self, cache_fallback_enabled: bool = False):
         try:
             app_context = app_ctx._get_current_object()
         except RuntimeError:
-            if self._context_caching_enabled is False and cache_fallback_enabled is False:
+            if (
+                self._context_caching_enabled is False
+                and cache_fallback_enabled is False
+            ):
                 raise
             app_context = self._last_app_ctx
         except:
@@ -660,12 +681,16 @@ class SQLAlchemy:
         try:
             scope = self.session_scopefunc()
         except:
-            app_ctx = self._get_app_context(cache_fallback_enabled=cache_fallback_enabled)
+            app_ctx = self._get_app_context(
+                cache_fallback_enabled=cache_fallback_enabled
+            )
             scope = id(app_ctx)
 
         return scope
 
-    def _call_for_binds(self, bind_key: str | None | list[str | None], op_name: str) -> None:
+    def _call_for_binds(
+        self, bind_key: str | None | list[str | None], op_name: str
+    ) -> None:
         """Call a method on each metadata.
 
         :meta private:
@@ -710,13 +735,19 @@ class SQLAlchemy:
 
             await conn.run_sync(sync_wrapper, self, bind_key, op_name)
 
-    async def async_create_all(self, bind_key: str | None | list[str | None] = "__all__") -> None:
+    async def async_create_all(
+        self, bind_key: str | None | list[str | None] = "__all__"
+    ) -> None:
         await self._async_call_for_binds(bind_key, "create_all")
 
-    async def async_drop_all(self, bind_key: str | None | list[str | None] = "__all__") -> None:
+    async def async_drop_all(
+        self, bind_key: str | None | list[str | None] = "__all__"
+    ) -> None:
         await self._async_call_for_binds(bind_key, "drop_all")
 
-    async def async_reflect(self, bind_key: str | None | list[str | None] = "__all__") -> None:
+    async def async_reflect(
+        self, bind_key: str | None | list[str | None] = "__all__"
+    ) -> None:
         await self._async_call_for_binds(bind_key, "reflect")
 
     def create_all(self, bind_key: str | None | list[str | None] = "__all__") -> None:
@@ -768,7 +799,9 @@ class SQLAlchemy:
 
             backref[1].setdefault("query_class", self.Query)
 
-    def relationship(self, *args: t.Any, **kwargs: t.Any) -> sa.orm.RelationshipProperty[t.Any]:
+    def relationship(
+        self, *args: t.Any, **kwargs: t.Any
+    ) -> sa.orm.RelationshipProperty[t.Any]:
         """A :func:`sqlalchemy.orm.relationship` that applies this extension's
         :attr:`Query` class for dynamic relationships and backrefs.
         """
@@ -838,7 +871,9 @@ class BindContext:
     is_async: bool = field(init=False)
     engine: sa.Engine | sa.ext.asyncio.AsyncEngine = field(init=False)
     metadata: sa.MetaData = field(init=False, repr=False)
-    connection: sa.Connection | sa.ext.asyncio.AsyncConnection = field(init=False, repr=False)
+    connection: sa.Connection | sa.ext.asyncio.AsyncConnection = field(
+        init=False, repr=False
+    )
     session: sa.orm.scoped_session | sa.ext.asyncio.async_scoped_session = field(
         init=False, repr=False
     )

@@ -7,7 +7,6 @@ import sqlalchemy
 import sqlalchemy.orm
 from blinker import Namespace
 from quart import Quart
-from quart.signals import AsyncNamespace
 from sqlalchemy.engine import Engine
 
 from .types import AnyCallableType
@@ -17,13 +16,13 @@ from .types import SessionFactoryType
 
 sa = sqlalchemy
 
-sync_signals = Namespace()
-async_signals = AsyncNamespace()
+_signals = Namespace()
 
-before_engine_created = sync_signals.signal("quart-sqlalchemy.engine.created.before")
-after_engine_created = sync_signals.signal("quart-sqlalchemy.engine.created.after")
 
-before_app_initialized = sync_signals.signal(
+before_engine_created = _signals.signal("quart-sqlalchemy.engine.created.before")
+after_engine_created = _signals.signal("quart-sqlalchemy.engine.created.after")
+
+before_app_initialized = _signals.signal(
     "quart-sqlalchemy.app.initialized.before",
     doc="""Fired before SQLAlchemy.init_app(app) is called.
     
@@ -32,7 +31,7 @@ before_app_initialized = sync_signals.signal(
             ...
     """,
 )
-after_app_initialized = sync_signals.signal(
+after_app_initialized = _signals.signal(
     "quart-sqlalchemy.app.initialized.after",
     doc="""Fired after SQLAlchemy.init_app(app) is called.
     
@@ -42,11 +41,19 @@ after_app_initialized = sync_signals.signal(
     """,
 )
 
-before_make_session_factory = sync_signals.signal("quart-sqlalchemy.make-session-factory.before")
-after_make_session_factory = sync_signals.signal("quart-sqlalchemy.make-session-factory.after")
+before_make_session_factory = _signals.signal(
+    "quart-sqlalchemy.make-session-factory.before"
+)
+after_make_session_factory = _signals.signal(
+    "quart-sqlalchemy.make-session-factory.after"
+)
 
-before_make_scoped_session = sync_signals.signal("quart-sqlalchemy.make-scoped-session.before")
-after_make_scoped_session = sync_signals.signal("quart-sqlalchemy.make-scoped-session.after")
+before_make_scoped_session = _signals.signal(
+    "quart-sqlalchemy.make-scoped-session.before"
+)
+after_make_scoped_session = _signals.signal(
+    "quart-sqlalchemy.make-scoped-session.after"
+)
 
 
 @dataclass

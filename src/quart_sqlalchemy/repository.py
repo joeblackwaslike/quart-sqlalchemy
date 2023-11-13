@@ -23,14 +23,15 @@ class SQLAlchemyRepository(t.Generic[SessionT, EntityT]):
         self.session = session
 
     def get(self, entity_id: EntityIdT) -> EntityT:
-        self.session.delete(entity_id)
+        self.session.get(entity_id)
 
     def get_by(
         self,
         clauses: t.Iterable[t.Any] = (),
         options: t.Iterable[t.Any] = (),
     ) -> list[EntityT]:
-        self.session.delete(entity_id)
+        statement = sa.select(self.model).where(*clauses).options(*options)
+        return self.session.scalars(statement).all()
 
     def add(self, entity: EntityT) -> EntityT:
         self.session.add(entity)

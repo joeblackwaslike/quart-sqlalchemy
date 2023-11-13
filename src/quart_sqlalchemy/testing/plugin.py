@@ -1,11 +1,9 @@
-import asyncio
+# This package is not finished
+
 import typing as t
 from contextlib import asynccontextmanager
 from contextlib import contextmanager
-from copy import deepcopy
-from dataclasses import dataclass
 from functools import partial
-from types import SimpleNamespace
 
 import pytest
 import sqlalchemy
@@ -91,7 +89,9 @@ async def async_ephemeral_session(
                     await session.rollback()
                     raise
             await transaction.rollback()
-        assert (await connection.exec_driver_sql("select count(*) from todo")).scalar() == 0
+        assert (
+            await connection.exec_driver_sql("select count(*) from todo")
+        ).scalar() == 0
 
     await Session.remove()
 
@@ -128,7 +128,9 @@ async def app_db_session(app, db, app_context):
 
 
 @pytest.fixture(scope="module", name="db_session")
-def _db_session(app: Quart, db: SQLAlchemy, Todo: t.Any) -> t.AsyncGenerator[sa.orm.Session, None]:
+def _db_session(
+    app: Quart, db: SQLAlchemy, Todo: t.Any
+) -> t.AsyncGenerator[sa.orm.Session, None]:
     # async with app.app_context():
     with sync_app_context(app):
         db.create_all()

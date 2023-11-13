@@ -1,3 +1,5 @@
+# This package is not finished
+
 import typing as t
 
 import sqlalchemy
