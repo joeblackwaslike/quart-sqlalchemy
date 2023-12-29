@@ -12,7 +12,7 @@ dependencies = [
     "SQLAlchemy[asyncio]<2.1.0,>=2.0.0",
     "SQLAlchemy-Utils",
     "anyio>=3.0.0,<4",
-    "pydantic~=1.10.13",
+    "pydantic~=2.5.3",
     "tenacity~=8.0.1",
     "sqlapagination",
     "exceptiongroup",
@@ -63,7 +63,15 @@ excludes = [
 [tool.pytest.ini_options]
 addopts = "-rsx --tb=short --loop-scope session"
 testpaths = ["tests"]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # Several pending fixes to be a well-behaved pydantic 2.0 user
+    "ignore:.*The `parse_obj` method is deprecated.*:pydantic.warnings.PydanticDeprecatedSince20",
+    "ignore:.*The `dict` method is deprecated; use `model_dump` instead.*:pydantic.warnings.PydanticDeprecatedSince20",
+    "ignore:.*Support for class-based `config` is deprecated, use ConfigDict instead.*:pydantic.warnings.PydanticDeprecatedSince20",
+    "ignore:.*Pydantic V1 style `@root_validator` validators are deprecated.*:pydantic.warnings.PydanticDeprecatedSince20",
+    "ignore:.*Field .* has conflict with protected namespace \"model_\".*:UserWarning",
+]
 asyncio_mode = "auto"
 py311_task = true
 log_cli = true
