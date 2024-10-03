@@ -65,7 +65,7 @@ A Simple Example
     app = Quart(__name__)
 
     db = QuartSQLAlchemy(
-      config=SQLAlchemyConfig
+      config=SQLAlchemyConfig(
           binds=dict(
               default=dict(
                   engine=dict(
@@ -79,14 +79,14 @@ A Simple Example
               )
           )
       ),
-      app,
+      app=app,
     )
 
     class User(db.Model)
         __tablename__ = "user"
 
         id: Mapped[int] = mapped_column(sa.Identity(), primary_key=True, autoincrement=True)
-        name: Mapped[str] = mapped_column(default="default")
+        username: Mapped[str] = mapped_column(default="default")
 
     db.create_all()
     
