@@ -138,7 +138,7 @@ class EngineConfig(ConfigBase):
     def default(cls):
         return cls(url="sqlite://")
 
-    @root_validator
+    @root_validator(pre=True)
     def apply_driver_defaults(cls, values):
         url = sa.make_url(values["url"])
         driver = url.drivername
@@ -221,7 +221,7 @@ class BindConfig(ConfigBase):
     session: SessionmakerOptions = Field(default_factory=SessionmakerOptions.default)
     engine: EngineConfig = Field(default_factory=EngineConfig.default)
 
-    @root_validator
+    @root_validator(pre=True)
     def validate_dialect(cls, values):
         return validate_dialect(cls, values, "sync")
 
@@ -229,7 +229,7 @@ class BindConfig(ConfigBase):
 class AsyncBindConfig(BindConfig):
     session: AsyncSessionmakerOptions = Field(default_factory=AsyncSessionmakerOptions.default)
 
-    @root_validator
+    @root_validator(pre=True)
     def validate_dialect(cls, values):
         return validate_dialect(cls, values, "async")
 
