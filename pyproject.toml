@@ -1,12 +1,13 @@
 [project]
 name = "quart-sqlalchemy"
-version = "3.0.4"
+version = "3.0.5"
 description = "SQLAlchemy for humans, with framework adapter for Quart."
 authors = [
     {name = "Joe Black", email = "me@joeblack.nyc"},
 ]
 dependencies = [
-    "quart<0.20.0,>=0.18.3",
+    "quart>=0.18.3 ; python_version >= '3.9'",
+    "quart<0.20.0,>=0.18.3 ; python_version < '3.9'",
     "werkzeug<3.1.0,>=2.2.0",
     "blinker<1.7,>=1.5",
     "SQLAlchemy[asyncio]<2.1.0,>=2.0.0",
