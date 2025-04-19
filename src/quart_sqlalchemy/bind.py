@@ -258,7 +258,8 @@ def register_engine_connection_cross_process_safety_handlers(
     def close_connections_for_forking():
         engine.dispose(close=False)
 
-    os.register_at_fork(before=close_connections_for_forking)
+    if os.name == 'posix':
+        os.register_at_fork(before=close_connections_for_forking)
 
     def connect(dbapi_connection, connection_record):
         connection_record.info["pid"] = os.getpid()
