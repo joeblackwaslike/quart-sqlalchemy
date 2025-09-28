@@ -46,11 +46,10 @@ def provide_session(bind_name: str = "default"):
         def wrapper(*args, **kwargs) -> RT:
             if "session" in kwargs or session_args_idx < len(args):
                 return func(*args, **kwargs)
-            else:
-                bind = Bind.get_instance(bind_name)
+            bind = Bind.get_instance(bind_name)
 
-                with create_session(bind) as session:
-                    return func(*args, session=session, **kwargs)
+            with create_session(bind) as session:
+                return func(*args, session=session, **kwargs)
 
         return wrapper
 

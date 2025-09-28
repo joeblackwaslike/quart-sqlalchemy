@@ -55,10 +55,7 @@ class ResponseWrapper(GenericModel, t.Generic[DataT]):
 
     @validator("status")
     def set_status_by_error_code(cls, v, values):
-        error_code = values.get("error_code")
-        if error_code:
-            return "failed"
-        return "ok"
+        return "failed" if (error_code := values.get("error_code")) else "ok"
 
 
 class MagicClientSchema(BaseSchema):

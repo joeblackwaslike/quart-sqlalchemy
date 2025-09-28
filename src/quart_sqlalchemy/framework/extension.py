@@ -14,7 +14,7 @@ class QuartSQLAlchemy(SQLAlchemy):
         config: t.Optional[SQLAlchemyConfig] = None,
         app: t.Optional[Quart] = None,
     ):
-        initialize = False if config is None else True
+        initialize = config is not None
         super().__init__(config, initialize=initialize)
 
         if app is not None:

@@ -228,7 +228,7 @@ class QuartAuth:
             results = self.authenticator.enforce(security_schemes, session)
             authorized_credentials = {}
             for result in results:
-                authorized_credentials.update(result)
+                authorized_credentials |= result
             g.authorized_credentials = authorized_credentials
 
 

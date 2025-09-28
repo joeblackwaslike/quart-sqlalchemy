@@ -64,7 +64,7 @@ class ObjectID:
         return False
 
     def __hash__(self):
-        return hash(tuple([self._encoded_id, self._decoded_id]))
+        return hash((self._encoded_id, self._decoded_id))
 
     def __str__(self):
         return "{encoded_id}".format(encoded_id=self._encoded_id)
@@ -88,10 +88,7 @@ class ObjectID:
         return self._encoded_id
 
     def _decode(self, value):
-        if isinstance(value, int):
-            return value
-        else:
-            return self.hashids.decode(value)[0]
+        return value if isinstance(value, int) else self.hashids.decode(value)[0]
 
     def decode(self):
         return self._decoded_id

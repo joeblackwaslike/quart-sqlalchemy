@@ -44,9 +44,7 @@ class SimpleTestBase:
 
     @pytest.fixture(scope="class")
     def db(self, app: Quart) -> t.Generator[QuartSQLAlchemy, None, None]:
-        db = QuartSQLAlchemy(app=app)
-
-        yield db
+        yield QuartSQLAlchemy(app=app)
 
     @pytest.fixture(scope="class")
     def models(
@@ -163,9 +161,7 @@ class MixinTestBase:
 
     @pytest.fixture(scope="class")
     def db(self, app: Quart) -> t.Generator[QuartSQLAlchemy, None, None]:
-        db = QuartSQLAlchemy(app=app)
-
-        yield db
+        yield QuartSQLAlchemy(app=app)
 
         # It's very important to clear the class _instances dict before recreating binds with the same name.
         # Bind._instances.clear()

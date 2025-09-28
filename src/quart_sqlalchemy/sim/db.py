@@ -51,19 +51,13 @@ class ObjectIDType(TypeDecorator):
         """Data going into to the database will be transformed by this method.
         See ``ObjectID`` for the design and rational for this.
         """
-        if value is None:
-            return None
-
-        return ObjectID(value).decode()
+        return None if value is None else ObjectID(value).decode()
 
     def process_result_value(self, value, dialect):
         """Data going out from the database will be explicitly casted to the
         ``ObjectID``.
         """
-        if value is None:
-            return None
-
-        return ObjectID(value)
+        return None if value is None else ObjectID(value)
 
 
 class MyBase(BaseMixins, sa.orm.DeclarativeBase):

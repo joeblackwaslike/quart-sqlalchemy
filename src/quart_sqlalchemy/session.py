@@ -45,17 +45,17 @@ def provide_global_contextual_session(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
         session_in_args = any(
-            [isinstance(arg, (sa.orm.Session, sa.ext.asyncio.AsyncSession)) for arg in args]
+            isinstance(arg, (sa.orm.Session, sa.ext.asyncio.AsyncSession))
+            for arg in args
         )
         session_in_kwargs = "session" in kwargs
         session_provided = session_in_args or session_in_kwargs
 
         if session_provided:
             return func(self, *args, **kwargs)
-        else:
-            session = session_proxy()
+        session = session_proxy()
 
-            return func(self, session, *args, **kwargs)
+        return func(self, session, *args, **kwargs)
 
     return wrapper
 

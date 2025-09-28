@@ -53,10 +53,12 @@ class ORMRepository(Repository):
         self._query = select(EntityMapper)
 
     def get(self, entity_id: EntityID) -> Entity:
-        dto = self._session.scalars(self._query.filter_by(uuid=entity_id)).one_or_none()
-        if not dto:
+        if dto := self._session.scalars(
+            self._query.filter_by(uuid=entity_id)
+        ).one_or_none():
+            return Entity(dto)
+        else:
             raise NotFound(entity_id)
-        return Entity(dto)
 
     def save(self, entity: Entity) -> None:
         self._session.add(entity.dto)
