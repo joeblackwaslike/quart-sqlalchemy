@@ -5,15 +5,19 @@
 		}
 	],
 	"settings": {
-		"python.terminal.activateEnvInCurrentTerminal": true,
-		"python.formatting.provider": "black",
-		"[python]": {
-			"editor.formatOnSave": true,
-			"editor.codeActionsOnSave": {
-				"source.organizeImports": true
-			}
-		},
-		"esbonio.sphinx.confDir": "",
-		"python.linting.pylintEnabled": false
+        "[python]": {
+            "editor.formatOnSave": true,
+            "editor.codeActionsOnSave": {
+                "source.fixAll": "explicit",
+                "source.organizeImports": "explicit"
+            },
+            "editor.defaultFormatter": "charliermarsh.ruff"
+        },
+        "python.testing.pytestEnabled": true,
+        "notebook.formatOnSave.enabled": true,
+        "notebook.codeActionsOnSave": {
+            "notebook.source.fixAll": "explicit",
+            "notebook.source.organizeImports": "explicit"
+        }
 	}
 }

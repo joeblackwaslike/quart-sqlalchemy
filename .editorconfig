@@ -1,5 +1,11 @@
-root = true
+# EditorConfig is awesome: https://editorconfig.org
 
+# top-most EditorConfig file
+root = true
+max_line_length = 100
+
+
+# Unix-style newlines with a newline ending every file
 [*]
 indent_style = space
 indent_size = 4
@@ -7,7 +13,22 @@ insert_final_newline = true
 trim_trailing_whitespace = true
 end_of_line = lf
 charset = utf-8
-max_line_length = 88
 
-[*.{yml,yaml,json,js,css,html}]
+[*.md]
+trim_trailing_whitespace = false
+
+
+# 2 space indentation
+[*.{yml,yaml,css,html}]
 indent_size = 2
+
+
+[*.py]
+indent_style = space
+indent_size = 4
+
+# Tab indentation (no size specified)
+[Makefile]
+indent_style = tab
+tab_width = 4
+

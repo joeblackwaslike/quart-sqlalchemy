@@ -11,12 +11,49 @@ import sqlalchemy.ext
 import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
 import sqlalchemy.util
+from bases import alphabet
+from bases import encoding
+from reedsolo import ReedSolomonError
+from reedsolo import RSCodec
+from speck import SpeckCipher
 
 
 sa = sqlalchemy
 
 
 T = t.TypeVar("T")
+
+alphabet.register(base62=alphabet.string_alphabet.StringAlphabet(alphabet.base64.chars[:-2]))
+b62 = alphabet.get("base62")
+b62enc = encoding.make(b62, kind="simple-enc", case_sensitive=True, name="base62")
+
+speck = SpeckCipher(0x123456789ABCDEF00FEDCBA987654321)
+rsc = RSCodec(10)
+
+
+def encrypt_id(id: int) -> str:
+    cipher_text = speck.encrypt(id)
+    cipher_bytes = bytearray(cipher_text.to_bytes(length=16, byteorder="big"))
+    checksummed = rsc.encode(cipher_bytes)
+    encoded = b62enc.encode(checksummed)
+    return encoded
+
+
+def decrypt_id(id: str) -> int:
+    decoded = b62enc.decode(id)
+    try:
+        decoded = rsc.decode(decoded)
+    except ReedSolomonError:
+        raise ValueError("Invalid checksum")
+    cipher_text = int.from_bytes(decoded, byteorder="big")
+    return speck.decrypt(cipher_text)
+
+
+# id = 9999999999
+# cipher_text = speck.encrypt(id)
+# cipher_bytes = bytearray(cipher_text.to_bytes(length=16, byteorder="big"))
+# checksummed = rsc.encode(cipher_bytes)
+# encoded = b62enc.encode(checksummed)
 
 
 class lazy_property(t.Generic[T]):
@@ -71,7 +108,11 @@ def sqlachanges(sa_object):
     Returns the changes made to this object so far this session, in {'propertyname': [listofvalues] } format.
     """
     attrs = sa.inspect(sa_object).attrs
-    return {a.key: list(reversed(a.history.sum())) for a in attrs if len(a.history.sum()) > 1}
+    return {
+        a.key: list(reversed(a.history.sum()))
+        for a in attrs
+        if len(a.history.sum()) > 1
+    }
 
 
 def camel_to_snake_case(name: str) -> str:
