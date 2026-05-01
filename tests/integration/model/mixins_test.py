@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import typing as t
 
 import pytest
@@ -8,29 +6,28 @@ import sqlalchemy.orm
 from sqlalchemy.orm import Mapped
 
 from quart_sqlalchemy import SQLAlchemy
-from quart_sqlalchemy.model import Base
 from quart_sqlalchemy.model import SoftDeleteMixin
 
 from ...base import SimpleTestBase
-
 
 sa = sqlalchemy
 
 
 class TestSoftDeleteFeature(SimpleTestBase):
     @pytest.fixture
-    def Post(self, db: SQLAlchemy, User: t.Type[t.Any]) -> t.Generator[t.Type[Base], None, None]:
-        class Post(SoftDeleteMixin, db.Model):
+    def Post(self, db: SQLAlchemy, User: type[t.Any]) -> type:
+        class Post(SoftDeleteMixin, db.Base):
+            __tablename__ = "post"
             id: Mapped[int] = sa.orm.mapped_column(primary_key=True)
             title: Mapped[str] = sa.orm.mapped_column()
-            user_id: Mapped[t.Optional[int]] = sa.orm.mapped_column(sa.ForeignKey("user.id"))
+            user_id: Mapped[int | None] = sa.orm.mapped_column(sa.ForeignKey("user.id"))
 
-            user: Mapped[t.Optional[User]] = sa.orm.relationship(backref="posts")
+            user: Mapped[User | None] = sa.orm.relationship(backref="posts")
 
         db.create_all()
-        yield Post
+        return Post
 
-    def test_inactive_filtered(self, db: SQLAlchemy, Post: t.Type[t.Any]):
+    def test_inactive_filtered(self, db: SQLAlchemy, Post: type[t.Any]):
         with db.bind.Session() as s:
             with s.begin():
                 post = Post(title="hello")
@@ -40,16 +37,16 @@ class TestSoftDeleteFeature(SimpleTestBase):
 
         with db.bind.Session() as s:
             with s.begin():
-                post.is_active = False
+                post.soft_delete()
                 s.add(post)
 
         with db.bind.Session() as s:
             posts = s.scalars(sa.select(Post)).all()
             assert len(posts) == 0
 
-            posts = s.scalars(sa.select(Post).execution_options(include_inactive=True)).all()
+            posts = s.scalars(sa.select(Post).execution_options(include_soft_deleted=True)).all()
             assert len(posts) == 1
             select_post = posts.pop()
 
             assert select_post.id == post.id
-            assert select_post.is_active is False
+            assert select_post.deleted_at is not None

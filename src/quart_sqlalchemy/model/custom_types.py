@@ -1,22 +1,17 @@
-from __future__ import annotations
-
 import typing as t
-from datetime import datetime
-from datetime import timezone
+from datetime import UTC, datetime
 
 import sqlalchemy
 import sqlalchemy.dialects.postgresql
 import sqlalchemy.engine.interfaces
 import sqlalchemy.sql.type_api
 import sqlalchemy.types
-from pydantic import BaseModel
-from pydantic import parse_obj_as
-
+from pydantic import BaseModel, TypeAdapter
 
 sa = sqlalchemy
 
 
-class PydanticType(sa.types.TypeDecorator):
+class PydanticType(sa.types.TypeDecorator[t.Any]):
     """Pydantic type.
 
     SAVING:
@@ -46,16 +41,15 @@ class PydanticType(sa.types.TypeDecorator):
         # Use JSONB for PostgreSQL and JSON for other databases.
         if dialect.name == "postgresql":
             return dialect.type_descriptor(sa.dialects.postgresql.JSONB())
-        else:
-            return dialect.type_descriptor(sa.JSON())
+        return dialect.type_descriptor(sa.JSON())
 
     def process_bind_param(
         self,
-        value: t.Optional[BaseModel],
+        value: BaseModel | None,
         dialect: sa.engine.interfaces.Dialect,
     ) -> t.Any:
         """Receive a bound parameter value to be converted/serialized."""
-        return value.dict() if value else None
+        return value.model_dump() if value else None
         # If you use FasAPI, you can replace the line above with their jsonable_encoder().
         # E.g.,
         # from fastapi.encoders import jsonable_encoder
@@ -63,33 +57,37 @@ class PydanticType(sa.types.TypeDecorator):
 
     def process_result_value(
         self,
-        value: t.Optional[str],
+        value: str | None,
         dialect: sa.engine.interfaces.Dialect,
-    ) -> t.Optional[BaseModel]:
+    ) -> BaseModel | None:
         """Receive a result-row column value to be converted/deserialized."""
-        return parse_obj_as(self.pydantic_type, value) if value else None
+        return TypeAdapter(self.pydantic_type).validate_python(value) if value else None
 
 
-class TZDateTime(sa.types.TypeDecorator):
-    impl = sa.types.DateTime
+class TZDateTime(sa.types.TypeDecorator[datetime]):
+    impl = sa.types.DateTime(timezone=True)
     cache_ok = True
+
+    @property
+    def python_type(self) -> type[datetime]:
+        return datetime
 
     def process_bind_param(
         self,
-        value: t.Optional[datetime],
+        value: datetime | None,
         dialect: sa.engine.interfaces.Dialect,
     ) -> t.Any:
         if value is not None:
             if not value.tzinfo:
                 raise TypeError("tzinfo is required")
-            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+            value = value.astimezone(UTC)
         return value
 
     def process_result_value(
         self,
-        value: t.Optional[str],
+        value: datetime | None,
         dialect: sa.engine.interfaces.Dialect,
-    ) -> t.Optional[datetime]:
+    ) -> datetime | None:
         if value is not None:
-            value = value.replace(tzinfo=timezone.utc)
+            return value.replace(tzinfo=UTC)
         return value

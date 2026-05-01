@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import typing as t
 
 import pytest
@@ -13,7 +11,6 @@ from quart_sqlalchemy.framework import QuartSQLAlchemy
 
 from . import constants
 
-
 sa = sqlalchemy
 
 
@@ -26,7 +23,7 @@ def app(request: pytest.FixtureRequest) -> Quart:
 
 @pytest.fixture(scope="session")
 def sqlalchemy_config():
-    return SQLAlchemyConfig.parse_obj(constants.simple_mapping_config)
+    return SQLAlchemyConfig(**constants.simple_mapping_config)
 
 
 @pytest.fixture(scope="session")
@@ -37,9 +34,10 @@ def db(sqlalchemy_config, app: Quart) -> QuartSQLAlchemy:
 @pytest.fixture(name="Todo", scope="session")
 def _todo_fixture(
     app: Quart, db: QuartSQLAlchemy
-) -> t.Generator[t.Type[sa.orm.DeclarativeBase], None, None]:
-    class Todo(db.Model):
-        id: Mapped[int] = sa.orm.mapped_column(sa.Identity(), primary_key=True, autoincrement=True)
+) -> t.Generator[type[sa.orm.DeclarativeBase], None, None]:
+    class Todo(db.Base):
+        __tablename__ = "todo"
+        id: Mapped[int] = sa.orm.mapped_column(primary_key=True, autoincrement=True)
         title: Mapped[str] = sa.orm.mapped_column(default="default")
 
     db.create_all()

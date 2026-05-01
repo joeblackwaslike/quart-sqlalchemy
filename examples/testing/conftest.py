@@ -21,19 +21,13 @@ import typing as t
 
 import pytest
 import sqlalchemy
-import sqlalchemy.orm
 from quart import Quart
 
+from quart_sqlalchemy import AsyncBind, Base, SQLAlchemyConfig
+from quart_sqlalchemy.framework import QuartSQLAlchemy
+from quart_sqlalchemy.testing import AsyncTestTransaction, TestTransaction
 
 sa = sqlalchemy
-
-from quart_sqlalchemy import AsyncBind
-from quart_sqlalchemy import Base
-from quart_sqlalchemy import SQLAlchemyConfig
-from quart_sqlalchemy.framework import QuartSQLAlchemy
-from quart_sqlalchemy.testing import AsyncTestTransaction
-from quart_sqlalchemy.testing import TestTransaction
-
 
 default_app = Quart(__name__)
 
@@ -129,7 +123,7 @@ def patch_sessionmakers(
     db_test_transaction: TestTransaction,
     async_db_test_transaction: AsyncTestTransaction,
     monkeypatch,
-) -> t.Generator[None, None, None]:
+) -> None:
     for bind in _db.binds.values():
         if isinstance(bind, AsyncBind):
             savepoint_bound_session = async_db_test_transaction.Session
@@ -137,8 +131,6 @@ def patch_sessionmakers(
             savepoint_bound_session = db_test_transaction.Session
 
         monkeypatch.setattr(bind, "Session", savepoint_bound_session)
-
-    yield
 
 
 @pytest.fixture(name="db", autouse=True)

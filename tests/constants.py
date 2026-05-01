@@ -1,6 +1,5 @@
 from quart_sqlalchemy import Base
 
-
 simple_mapping_config = {
     "model_class": Base,
     "binds": {

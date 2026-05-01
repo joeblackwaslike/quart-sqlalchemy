@@ -2,17 +2,11 @@ import typing as t
 
 import pytest
 import sqlalchemy
-import sqlalchemy.event
 import sqlalchemy.exc
-import sqlalchemy.ext
-import sqlalchemy.ext.asyncio
-import sqlalchemy.orm
-import sqlalchemy.util
 
 from quart_sqlalchemy.framework import QuartSQLAlchemy
 
 from ...base import SimpleTestBase
-
 
 sa = sqlalchemy
 
@@ -43,6 +37,7 @@ class TestQuartSQLAlchemySmoke(SimpleTestBase):
                 result = conn.execute(sa.insert(Todo))
                 insert_row = result.inserted_primary_key
 
+            assert insert_row is not None
             select_row = conn.execute(sa.select(Todo).where(Todo.id == insert_row.id)).one()
             assert select_row.id == insert_row.id
 

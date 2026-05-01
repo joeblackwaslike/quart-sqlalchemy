@@ -1,10 +1,7 @@
-from __future__ import annotations
-
 from datetime import datetime
 
 import sqlalchemy
 import sqlalchemy.orm
-import sqlalchemy.sql.selectable
 from sqlalchemy.orm import Mapped, mapped_column
 
 sa = sqlalchemy
@@ -17,13 +14,13 @@ Session = sa.orm.sessionmaker(bind=engine, expire_on_commit=False)
 class User(Base):
     __tablename__ = "user"
 
-    id: Mapped[int] = mapped_column(sa.Identity(), primary_key=True)
-    name: Mapped[str] = mapped_column(sa.String(255), nullable=True)
-    time_created: Mapped[datetime] = mapped_column(
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         default=sa.func.now(),
         server_default=sa.FetchedValue(),
     )
-    time_updated: Mapped[datetime] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         default=sa.func.now(),
         onupdate=sa.func.now(),
         server_default=sa.FetchedValue(),
@@ -36,8 +33,8 @@ class User(Base):
 class Post(Base):
     __tablename__ = "post"
 
-    id: Mapped[int] = mapped_column(sa.Identity(), primary_key=True)
-    user_id: Mapped[int] = mapped_column(sa.ForeignKey("user.id"), nullable=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(sa.ForeignKey("user.id"))
 
     user = sa.orm.relationship("User", back_populates="posts", uselist=False)
 
@@ -68,12 +65,12 @@ with Session() as session:
 # time_updated not fetched, needs to be refreshed
 # print(new_user.name, new_user.time_created)
 
-print(user.id, user.name, user.time_created, user.time_updated)
+print(user.id, user.name, user.created_at, user.updated_at)
 
 with Session() as session:
     user = session.get(User, new_user.id)
 
-print(user.id, user.name, user.time_created, user.time_updated)
+print(user.id, user.name, user.created_at, user.updated_at)
 
->>> print(user.id, user.time_created, user.time_updated)
-'1 2023-03-21 18:02:56 2023-03-21 18:02:56'
+print(user.id, user.created_at, user.updated_at)
+"1 2023-03-21 18:02:56 2023-03-21 18:02:56"

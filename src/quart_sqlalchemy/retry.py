@@ -1,25 +1,13 @@
-"""This module is a best effort first-iteration attempt to add retry logic to sqlalchemy.
+"""Retry logic for SQLAlchemy database operations.
 
-It's expected when working with a remote database to encounter exceptions related to deadlocks,
-transaction isolation measures, and overall connectivity issues.  These exceptions are almost
-always from the DB-API level and mostly inherit from:
+When working with remote databases, it's expected to encounter exceptions related to
+deadlocks, transaction isolation, and connectivity issues. These exceptions typically
+inherit from:
     * sqlalchemy.exc.OperationalError
     * sqlalchemy.exc.InternalError
 
-The tenacity library can be used here to add some retry logic to sqlalchemy transactions.
+This module provides retry configuration using the tenacity library.
 
-There are a few ways to use tenacity:
-    * You can use the t`enacity.retry` decorator to decorate the callable with retry logic.
-    * You can use the `tenacity.Retrying` or `tenacity.AsyncRetrying` context managers to add
-      retry logic to a block of code.
-
-WARNING:  The following code in this module is experimental and needs to be completed before anything here
-can be relied on.  It probably doesn't work in it's current form.  Use the examples under Usage instead.
-    * RetryingSession
-    * retrying_session
-    * retrying_async_session
-
-    
 Usage:
 
 Example decorator usage:
@@ -38,7 +26,7 @@ Example decorator usage:
     ```
 
 Example async decorator usage:
-    
+
     ```python
     @tenacity.retry(**config)
     async def add_user_post(db, user_id, post_values):
@@ -90,16 +78,14 @@ Check out the repo: https://github.com/jd/tenacity
 """
 
 import logging
-from contextlib import asynccontextmanager
-from contextlib import AsyncExitStack
-from contextlib import contextmanager
-from contextlib import ExitStack
+import typing as t
+from contextlib import asynccontextmanager, contextmanager
 
 import sqlalchemy
 import sqlalchemy.exc
+import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
 import tenacity
-
 
 sa = sqlalchemy
 
@@ -117,45 +103,78 @@ retry_config = dict(
     reraise=True,
     retry=tenacity.retry_if_exception_type(_RETRY_ERRORS)
     | tenacity.retry_if_exception_message(match="Too many connections"),
-    stop=tenacity.stop_after_attempt(3) | tenacity.stop_after_delay(5),
-    wait=tenacity.wait_exponential(max=6, exp_base=1.5),
+    stop=tenacity.stop_after_attempt(3) | tenacity.stop_after_delay(10),
+    wait=tenacity.wait_exponential(max=10, exp_base=1.5),
     before_sleep=tenacity.before_sleep_log(logger, logging.INFO),
 )
 
-retryable = tenacity.retry(**retry_config)
-retry_context = tenacity.Retrying(**retry_config)
-
-
-class RetryingSession(sa.orm.Session):
-    @tenacity.retry(**retry_config)
-    def _execute_internal(self, *args, **kwargs):
-        return super()._execute_internal(*args, **kwargs)
-
 
 @contextmanager
-def retrying_session(bind, begin=True, **kwargs):
+def retrying_session(bind: t.Any, **kwargs: t.Any) -> t.Generator[sa.orm.Session, None, None]:
+    """Context manager providing a database session with automatic retry logic.
+
+    WARNING: This function is experimental and may not handle all edge cases.
+    For production use, prefer using tenacity.retry() decorator directly on your
+    business logic functions.
+
+    Args:
+        bind: Database bind object with a Session factory
+        **kwargs: Additional retry configuration to override retry_config defaults
+
+    Yields:
+        Session: SQLAlchemy session with automatic transaction management
+
+    Raises:
+        tenacity.RetryError: When all retry attempts are exhausted (re-raised after logging)
+
+    Example:
+        >>> with retrying_session(db.bind) as session:
+        ...     user = session.scalars(sa.select(User).where(User.id == 1)).one()
+        ...     user.name = "Updated"
+        ...     session.commit()
+    """
     try:
-        for attempt in tenacity.Retrying(**retry_config, **kwargs):
+        for attempt in tenacity.Retrying(**retry_config, **kwargs):  # type: ignore[arg-type]
             with attempt:
-                print("attempt", attempt.retry_state.attempt_number)
+                logger.info("Retry attempt %d", attempt.retry_state.attempt_number)
                 with bind.Session() as session:
-                    with ExitStack() as stack:
-                        if begin:
-                            stack.enter_context(session.begin())
-                        yield session
+                    yield session
     except tenacity.RetryError:
-        pass
+        logger.exception("All retry attempts exhausted for database operation")
+        raise
 
 
 @asynccontextmanager
-async def retrying_async_session(bind, begin=True, **kwargs):
+async def retrying_async_session(
+    bind: t.Any, **kwargs: t.Any
+) -> t.AsyncGenerator[sa.ext.asyncio.AsyncSession, None]:
+    """Async context manager providing a database session with automatic retry logic.
+
+    WARNING: This function is experimental and may not handle all edge cases.
+    For production use, prefer using tenacity.retry() decorator directly on your
+    async business logic functions.
+
+    Args:
+        bind: Async database bind object with an AsyncSession factory
+        **kwargs: Additional retry configuration to override retry_config defaults
+
+    Yields:
+        AsyncSession: SQLAlchemy async session with automatic transaction management
+
+    Raises:
+        tenacity.RetryError: When all retry attempts are exhausted (re-raised after logging)
+
+    Example:
+        >>> async with retrying_async_session(db.async_bind) as session:
+        ...     user = (await session.scalars(sa.select(User).where(User.id == 1))).one()
+        ...     user.name = "Updated"
+        ...     await session.commit()
+    """
     try:
-        async for attempt in tenacity.AsyncRetrying(**retry_config, **kwargs):
+        async for attempt in tenacity.AsyncRetrying(**retry_config, **kwargs):  # type: ignore[arg-type]
             with attempt:
                 async with bind.Session() as session:
-                    async with AsyncExitStack() as stack:
-                        if begin:
-                            await stack.enter_async_context(session.begin())
-                        yield session
+                    yield session
     except tenacity.RetryError:
-        pass
+        logger.exception("All retry attempts exhausted for async database operation")
+        raise

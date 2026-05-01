@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 import typing as t
 from contextlib import contextmanager
@@ -10,84 +8,156 @@ import sqlalchemy.exc
 import sqlalchemy.ext
 import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
-import sqlalchemy.util
 
 from . import signals
 from .config import BindConfig
 from .model import setup_soft_delete_for_session
-from .testing import AsyncTestTransaction
-from .testing import TestTransaction
-
+from .testing import AsyncTestTransaction, TestTransaction
 
 sa = sqlalchemy
 
 
 class BindBase:
+    """Base class for database bind management.
+
+    Provides common properties and initialization for both sync and async binds.
+    A bind represents a single database connection (engine + session factory).
+
+    Attributes:
+        config: Bind configuration (engine + session settings)
+        metadata: SQLAlchemy metadata registry
+        engine: Database engine instance
+        Session: Session factory for creating sessions
+    """
+
     config: BindConfig
     metadata: sa.MetaData
     engine: sa.Engine
-    Session: sa.orm.sessionmaker
+    Session: sa.orm.sessionmaker[sa.orm.Session]
 
     def __init__(
         self,
         config: BindConfig,
         metadata: sa.MetaData,
-    ):
+    ) -> None:
+        """Initialize the bind with configuration and metadata.
+
+        Args:
+            config: Bind configuration settings
+            metadata: SQLAlchemy metadata registry
+        """
         self.config = config
         self.metadata = metadata
 
     @property
     def url(self) -> str:
+        """Get the database URL string.
+
+        Returns:
+            Database connection URL as string
+
+        Raises:
+            RuntimeError: If engine not initialized yet
+        """
         if not hasattr(self, "engine"):
             raise RuntimeError("Database not initialized yet. Call initialize() first.")
         return str(self.engine.url)
 
     @property
     def is_async(self) -> bool:
+        """Check if this bind uses async engine.
+
+        Returns:
+            True if async engine, False otherwise
+
+        Raises:
+            RuntimeError: If engine not initialized yet
+        """
         if not hasattr(self, "engine"):
             raise RuntimeError("Database not initialized yet. Call initialize() first.")
         return self.engine.url.get_dialect().is_async
 
     @property
-    def is_read_only(self):
+    def is_read_only(self) -> bool:
+        """Check if this bind is configured as read-only.
+
+        Returns:
+            True if read-only, False otherwise
+        """
         return self.config.read_only
 
 
 class BindContext(BindBase):
+    """Temporary bind context with custom execution options.
+
+    Created by Bind.context() to provide isolated execution environment
+    without modifying the parent bind. Useful for temporary configuration
+    changes like transaction isolation levels.
+    """
+
     pass
 
 
 class Bind(BindBase):
+    """Synchronous database bind.
+
+    Manages a sync SQLAlchemy engine and session factory for a single database.
+    Handles engine creation, session factory setup, and metadata operations.
+
+    Example:
+        >>> config = BindConfig(engine=EngineConfig(url="sqlite:///app.db"))
+        >>> bind = Bind(config, metadata)
+        >>> with bind.Session() as session:
+        ...     with session.begin():
+        ...         # Your database operations
+        ...         pass
+    """
+
     def __init__(
         self,
         config: BindConfig,
         metadata: sa.MetaData,
         initialize: bool = True,
     ):
+        """Initialize the sync bind.
+
+        Args:
+            config: Bind configuration settings
+            metadata: SQLAlchemy metadata registry
+            initialize: Whether to initialize engine immediately (default: True)
+        """
         self.config = config
         self.metadata = metadata
 
         if initialize:
             self.initialize()
 
-    def initialize(self):
+    def initialize(self) -> "Bind":
+        """Initialize or reinitialize the engine and session factory.
+
+        Disposes of existing engine if present, then creates new engine
+        and session factory based on configuration.
+
+        Returns:
+            Self for method chaining
+        """
         if hasattr(self, "engine"):
             self.engine.dispose()
 
         self.engine = self.create_engine(
-            self.config.engine.dict(exclude_unset=True, exclude_none=True),
+            self.config.engine.model_dump(exclude_unset=True, exclude_none=True),
             prefix="",
         )
         self.Session = self.create_session_factory(
-            self.config.session.dict(exclude_unset=True, exclude_none=True),
+            self.config.session.model_dump(exclude_unset=True, exclude_none=True),
         )
         return self
 
     @contextmanager
     def context(
         self,
-        engine_execution_options: t.Optional[t.Dict[str, t.Any]] = None,
-        session_execution__options: t.Optional[t.Dict[str, t.Any]] = None,
+        engine_execution_options: dict[str, t.Any] | None = None,
+        session_execution__options: dict[str, t.Any] | None = None,
     ) -> t.Generator[BindContext, None, None]:
         context = BindContext(self.config, self.metadata)
         context.engine = self.engine.execution_options(**engine_execution_options or {})
@@ -112,6 +182,16 @@ class Bind(BindBase):
     def create_session_factory(
         self, options: dict[str, t.Any]
     ) -> sa.orm.sessionmaker[sa.orm.Session]:
+        """Create a SQLAlchemy session factory.
+
+        Emits before/after signals for customization hooks.
+
+        Args:
+            options: Session configuration options
+
+        Returns:
+            Configured session factory
+        """
         signals.before_bind_session_factory_created.send(self, options=options)
         session_factory = sa.orm.sessionmaker(bind=self.engine, **options)
         signals.after_bind_session_factory_created.send(
@@ -119,46 +199,100 @@ class Bind(BindBase):
         )
         return session_factory
 
-    def create_engine(self, config: t.Dict[str, t.Any], prefix: str = "") -> sa.Engine:
+    def create_engine(self, config: dict[str, t.Any], prefix: str = "") -> sa.Engine:
+        """Create a SQLAlchemy engine from configuration.
+
+        Emits before/after signals for customization hooks.
+
+        Args:
+            config: Engine configuration dictionary
+            prefix: Configuration key prefix (default: "")
+
+        Returns:
+            Configured SQLAlchemy engine
+        """
         signals.before_bind_engine_created.send(self, config=config, prefix=prefix)
         engine = sa.engine_from_config(config, prefix=prefix)
         signals.after_bind_engine_created.send(self, config=config, prefix=prefix, engine=engine)
         return engine
 
-    def test_transaction(self, savepoint: bool = False):
+    def test_transaction(self, savepoint: bool = False) -> TestTransaction:
+        """Create a test transaction context manager.
+
+        Test transactions automatically rollback on exit, ensuring test isolation.
+
+        Args:
+            savepoint: Use savepoint instead of full transaction (default: False)
+
+        Returns:
+            Test transaction context manager
+        """
         return TestTransaction(self, savepoint=savepoint)
 
-    def _call_metadata(self, method: str):
+    def _call_metadata(self, method: str) -> None:
+        """Call a metadata method within a transaction.
+
+        Args:
+            method: Metadata method name to call
+        """
         with self.engine.connect() as conn:
             with conn.begin():
-                return getattr(self.metadata, method)(bind=conn)
+                getattr(self.metadata, method)(bind=conn)
 
-    def create_all(self):
-        return self._call_metadata("create_all")
+    def create_all(self) -> None:
+        """Create all tables defined in metadata."""
+        self._call_metadata("create_all")
 
-    def drop_all(self):
-        return self._call_metadata("drop_all")
+    def drop_all(self) -> None:
+        """Drop all tables defined in metadata."""
+        self._call_metadata("drop_all")
 
-    def reflect(self):
-        return self._call_metadata("reflect")
+    def reflect(self) -> None:
+        """Reflect database schema into metadata."""
+        self._call_metadata("reflect")
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__} {self.engine.url}>"
 
 
 class AsyncBind(Bind):
-    engine: sa.ext.asyncio.AsyncEngine
-    Session: sa.ext.asyncio.async_sessionmaker
+    """Asynchronous database bind.
 
-    def create_session_factory(
+    Manages an async SQLAlchemy engine and session factory for a single database.
+    Handles async engine creation, session factory setup, and metadata operations.
+
+    All operations must be awaited when using AsyncBind.
+
+    Example:
+        >>> config = AsyncBindConfig(engine=EngineConfig(url="sqlite+aiosqlite:///app.db"))
+        >>> bind = AsyncBind(config, metadata)
+        >>> async with bind.Session() as session:
+        ...     async with session.begin():
+        ...         # Your async database operations
+        ...         pass
+    """
+
+    engine: sa.ext.asyncio.AsyncEngine  # type: ignore[assignment]
+    Session: sa.ext.asyncio.async_sessionmaker[sa.ext.asyncio.AsyncSession]  # type: ignore[assignment]
+
+    def create_session_factory(  # type: ignore[override]
         self, options: dict[str, t.Any]
     ) -> sa.ext.asyncio.async_sessionmaker[sa.ext.asyncio.AsyncSession]:
-        """
-        It took some research to figure out the following trick which combines sync and async
-        sessionmakers to make the async_sessionmaker a valid target for sqlalchemy events.
+        """Create an async SQLAlchemy session factory.
 
-        Details can be found at:
-        https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#examples-of-event-listeners-with-async-engines-sessions-sessionmakers
+        Uses a trick to combine sync and async sessionmakers to make the
+        async_sessionmaker a valid target for SQLAlchemy events.
+
+        Emits before/after signals for customization hooks.
+
+        Args:
+            options: Session configuration options
+
+        Returns:
+            Configured async session factory
+
+        See Also:
+            https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#examples-of-event-listeners-with-async-engines-sessions-sessionmakers
         """
         signals.before_bind_session_factory_created.send(self, options=options)
 
@@ -174,7 +308,7 @@ class AsyncBind(Bind):
         )
         return session_factory
 
-    def create_engine(
+    def create_engine(  # type: ignore[override]
         self, config: dict[str, t.Any], prefix: str = ""
     ) -> sa.ext.asyncio.AsyncEngine:
         signals.before_bind_engine_created.send(self, config=config, prefix=prefix)
@@ -182,24 +316,36 @@ class AsyncBind(Bind):
         signals.after_bind_engine_created.send(self, config=config, prefix=prefix, engine=engine)
         return engine
 
-    def test_transaction(self, savepoint: bool = False):
+    def test_transaction(self, savepoint: bool = False) -> AsyncTestTransaction:
         return AsyncTestTransaction(self, savepoint=savepoint)
 
-    async def _call_metadata(self, method: str):
+    async def _call_metadata(self, method: str) -> None:  # type: ignore[override]
         async with self.engine.connect() as conn:
             async with conn.begin():
 
-                def sync_call(conn: sa.Connection, method: str):
+                def sync_call(conn: sa.Connection, method: str) -> None:
                     getattr(self.metadata, method)(bind=conn)
 
-                return await conn.run_sync(sync_call, method)
+                await conn.run_sync(sync_call, method)
+
+    async def create_all(self) -> None:  # type: ignore[override]
+        """Create all tables defined in metadata (async version)."""
+        await self._call_metadata("create_all")
+
+    async def drop_all(self) -> None:  # type: ignore[override]
+        """Drop all tables defined in metadata (async version)."""
+        await self._call_metadata("drop_all")
+
+    async def reflect(self) -> None:  # type: ignore[override]
+        """Reflect database schema into metadata (async version)."""
+        await self._call_metadata("reflect")
 
 
 @signals.after_bind_session_factory_created.connect
 def register_soft_delete_support_for_session(
-    bind: t.Union[Bind, AsyncBind],
-    options: t.Dict[str, t.Any],
-    session_factory: t.Union[sa.orm.sessionmaker, sa.ext.asyncio.async_sessionmaker],
+    bind: Bind | AsyncBind,
+    options: dict[str, t.Any],
+    session_factory: sa.orm.sessionmaker[t.Any] | sa.ext.asyncio.async_sessionmaker[t.Any],
 ) -> None:
     """Register the event handlers that enable soft-delete logic to be applied automatically.
 
@@ -207,12 +353,10 @@ def register_soft_delete_support_for_session(
     ORM models that should support soft-delete.  You can learn more by checking out the
     model.mixins module.
     """
-    if all(
-        [
-            isinstance(session_factory, sa.ext.asyncio.async_sessionmaker),
-            "sync_session_class" in session_factory.kw,
-        ]
-    ):
+    if all([
+        isinstance(session_factory, sa.ext.asyncio.async_sessionmaker),
+        "sync_session_class" in session_factory.kw,
+    ]):
         session_factory = session_factory.kw["sync_session_class"]
 
     setup_soft_delete_for_session(session_factory)  # type: ignore
@@ -228,9 +372,9 @@ def register_soft_delete_support_for_session(
 @signals.after_bind_engine_created.connect
 def register_engine_connection_cross_process_safety_handlers(
     sender: Bind,
-    config: t.Dict[str, t.Any],
+    config: dict[str, t.Any],
     prefix: str,
-    engine: t.Union[sa.Engine, sa.ext.asyncio.AsyncEngine],
+    engine: sa.Engine | sa.ext.asyncio.AsyncEngine,
 ) -> None:
     """Register event handlers to invalidate connections shared across process boundaries.
 
@@ -250,23 +394,22 @@ def register_engine_connection_cross_process_safety_handlers(
     SQLAlchemy has a section of their docs dedicated to this exact concern, see that page for
     more details: https://docs.sqlalchemy.org/en/20/core/pooling.html#pooling-multiprocessing
     """
-
     # Use the sync_engine when AsyncEngine
     if isinstance(engine, sa.ext.asyncio.AsyncEngine):
         engine = engine.sync_engine
 
-    def close_connections_for_forking():
+    def close_connections_for_forking() -> None:
         engine.dispose(close=False)
 
     os.register_at_fork(before=close_connections_for_forking)
 
-    def connect(dbapi_connection, connection_record):
+    def connect(dbapi_connection: t.Any, connection_record: t.Any) -> None:
         connection_record.info["pid"] = os.getpid()
 
     if not sa.event.contains(engine, "connect", connect):
         sa.event.listen(engine, "connect", connect)
 
-    def checkout(dbapi_connection, connection_record, connection_proxy):
+    def checkout(dbapi_connection: t.Any, connection_record: t.Any, connection_proxy: t.Any) -> None:
         pid = os.getpid()
         if connection_record.info["pid"] != pid:
             connection_record.dbapi_connection = connection_proxy.dbapi_connection = None
@@ -283,9 +426,9 @@ def register_engine_connection_cross_process_safety_handlers(
 @signals.after_bind_engine_created.connect
 def register_engine_connection_sqlite_specific_transaction_fix(
     sender: Bind,
-    config: t.Dict[str, t.Any],
+    config: dict[str, t.Any],
     prefix: str,
-    engine: t.Union[sa.Engine, sa.ext.asyncio.AsyncEngine],
+    engine: sa.Engine | sa.ext.asyncio.AsyncEngine,
 ) -> None:
     """Register event handlers to fix dbapi broken transaction for sqlite dialects.
 
@@ -310,7 +453,6 @@ def register_engine_connection_sqlite_specific_transaction_fix(
     To learn more about this recipe, check out the sqlalchemy docs link below:
         https://docs.sqlalchemy.org/en/20/dialects/sqlite.html#pysqlite-serializable
     """
-
     # Use the sync_engine when AsyncEngine
     if isinstance(engine, sa.ext.asyncio.AsyncEngine):
         engine = engine.sync_engine
@@ -318,7 +460,7 @@ def register_engine_connection_sqlite_specific_transaction_fix(
     if engine.dialect.name != "sqlite":
         return
 
-    def do_connect(dbapi_connection, connection_record):
+    def do_connect(dbapi_connection: t.Any, connection_record: t.Any) -> None:
         # disable pysqlite's emitting of the BEGIN statement entirely.
         # also stops it from emitting COMMIT before any DDL.
         dbapi_connection.isolation_level = None
@@ -326,7 +468,7 @@ def register_engine_connection_sqlite_specific_transaction_fix(
     if not sa.event.contains(engine, "connect", do_connect):
         sa.event.listen(engine, "connect", do_connect)
 
-    def do_begin(conn_):
+    def do_begin(conn_: t.Any) -> None:
         # emit our own BEGIN
         conn_.exec_driver_sql("BEGIN")
 

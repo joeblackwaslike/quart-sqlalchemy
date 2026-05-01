@@ -1,27 +1,20 @@
-from __future__ import annotations
-
 import typing as t
 
-import pytest
 import sqlalchemy
 import sqlalchemy.exc
 import sqlalchemy.orm
-import tenacity
 from sqlalchemy.orm import Mapped
 
 from quart_sqlalchemy import SQLAlchemy
-from quart_sqlalchemy.retry import retry_config
-from quart_sqlalchemy.retry import retrying_async_session
 from quart_sqlalchemy.retry import retrying_session
 
 from .. import base
-
 
 sa = sqlalchemy
 
 
 class TestRetryingSessions(base.ComplexTestBase):
-    def test_retrying_session(self, db: SQLAlchemy, Todo: t.Type[t.Any], mocker):
+    def test_retrying_session(self, db: SQLAlchemy, Todo: type[t.Any], mocker):
         side_effects = [
             sa.exc.InvalidRequestError,
             sa.exc.InvalidRequestError,
@@ -45,8 +38,9 @@ class TestRetryingSessions(base.ComplexTestBase):
         #     s.add(todo)
         #     s.commit()
 
-    def test_retrying_session_class(self, db: SQLAlchemy, Todo: t.Type[t.Any], mocker):
-        class Unique(db.Model):
+    def test_retrying_session_class(self, db: SQLAlchemy, Todo: type[t.Any], mocker):
+        class Unique(db.Base):
+            __tablename__ = "unique"
             id: Mapped[int] = sa.orm.mapped_column(
                 sa.Identity(), primary_key=True, autoincrement=True
             )

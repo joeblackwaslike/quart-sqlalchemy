@@ -1,17 +1,10 @@
 import pytest
 import sqlalchemy
-import sqlalchemy.event
-import sqlalchemy.exc
-import sqlalchemy.ext
-import sqlalchemy.ext.asyncio
-import sqlalchemy.orm
-import sqlalchemy.util
 from quart import Quart
 
 from quart_sqlalchemy.framework import QuartSQLAlchemy
 
 from ...base import SimpleTestBase
-
 
 sa = sqlalchemy
 

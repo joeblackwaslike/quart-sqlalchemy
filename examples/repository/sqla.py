@@ -1,24 +1,13 @@
-from __future__ import annotations
-
 import typing as t
 
 import sqlalchemy
-import sqlalchemy.event
-import sqlalchemy.exc
 import sqlalchemy.orm
 import sqlalchemy.sql
+from base import AbstractBulkRepository, AbstractRepository
 from builder import StatementBuilder
 from meta import TableMetadataMixin
 
-from base import AbstractBulkRepository
-from base import AbstractRepository
-from quart_sqlalchemy.types import ColumnExpr
-from quart_sqlalchemy.types import EntityIdT
-from quart_sqlalchemy.types import EntityT
-from quart_sqlalchemy.types import ORMOption
-from quart_sqlalchemy.types import Selectable
-from quart_sqlalchemy.types import SessionT
-
+from quart_sqlalchemy.types import ColumnExpr, EntityIdT, EntityT, ORMOption, Selectable, SessionT
 
 sa = sqlalchemy
 
@@ -58,7 +47,7 @@ class SQLAlchemyRepository(
         self.session = session
         self.builder = StatementBuilder(None)
 
-    def insert(self, values: t.Dict[str, t.Any]) -> EntityT:
+    def insert(self, values: dict[str, t.Any]) -> EntityT:
         """Insert a new model into the database."""
         new = self.model(**values)
         self.session.add(new)
@@ -66,7 +55,7 @@ class SQLAlchemyRepository(
         self.session.refresh(new)
         return new
 
-    def update(self, id_: EntityIdT, values: t.Dict[str, t.Any]) -> EntityT:
+    def update(self, id_: EntityIdT, values: dict[str, t.Any]) -> EntityT:
         """Update existing model with new values."""
         obj = self.session.get(self.model, id_)
         if obj is None:
@@ -78,9 +67,7 @@ class SQLAlchemyRepository(
         self.session.refresh(obj)
         return obj
 
-    def merge(
-        self, id_: EntityIdT, values: t.Dict[str, t.Any], for_update: bool = False
-    ) -> EntityT:
+    def merge(self, id_: EntityIdT, values: dict[str, t.Any], for_update: bool = False) -> EntityT:
         """Merge model in session/db having id_ with values."""
         self.session.get(self.model, id_)
         values.update(id=id_)
@@ -93,10 +80,10 @@ class SQLAlchemyRepository(
         self,
         id_: EntityIdT,
         options: t.Sequence[ORMOption] = (),
-        execution_options: t.Optional[t.Dict[str, t.Any]] = None,
+        execution_options: dict[str, t.Any] | None = None,
         for_update: bool = False,
-        include_inactive: bool = False,
-    ) -> t.Optional[EntityT]:
+        include_soft_deleted: bool = False,
+    ) -> EntityT | None:
         """Get object identified by id_ from the database.
 
         Note: It's a common misconception that session.get(Model, id) is akin to a shortcut for
@@ -112,8 +99,8 @@ class SQLAlchemyRepository(
         on the result before returning.
         """
         execution_options = execution_options or {}
-        if include_inactive:
-            execution_options.setdefault("include_inactive", include_inactive)
+        if include_soft_deleted:
+            execution_options.setdefault("include_soft_deleted", include_soft_deleted)
 
         statement = sa.select(self.model).where(self.model.id == id_).limit(1)  # type: ignore
 
@@ -129,17 +116,17 @@ class SQLAlchemyRepository(
         self,
         selectables: t.Sequence[Selectable] = (),
         conditions: t.Sequence[ColumnExpr] = (),
-        group_by: t.Sequence[t.Union[ColumnExpr, str]] = (),
-        order_by: t.Sequence[t.Union[ColumnExpr, str]] = (),
+        group_by: t.Sequence[ColumnExpr | str] = (),
+        order_by: t.Sequence[ColumnExpr | str] = (),
         options: t.Sequence[ORMOption] = (),
-        execution_options: t.Optional[t.Dict[str, t.Any]] = None,
-        offset: t.Optional[int] = None,
-        limit: t.Optional[int] = None,
+        execution_options: dict[str, t.Any] | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
         distinct: bool = False,
         for_update: bool = False,
-        include_inactive: bool = False,
-        yield_by_chunk: t.Optional[int] = None,
-    ) -> t.Union[sa.ScalarResult[EntityT], t.Iterator[t.Sequence[EntityT]]]:
+        include_soft_deleted: bool = False,
+        yield_by_chunk: int | None = None,
+    ) -> sa.ScalarResult[EntityT] | t.Iterator[t.Sequence[EntityT]]:
         """Select from the database.
 
         Note: yield_by_chunk is not compatible with the subquery and joined loader strategies, use selectinload for eager loading.
@@ -147,8 +134,8 @@ class SQLAlchemyRepository(
         selectables = selectables or (self.model,)  # type: ignore
 
         execution_options = execution_options or {}
-        if include_inactive:
-            execution_options.setdefault("include_inactive", include_inactive)
+        if include_soft_deleted:
+            execution_options.setdefault("include_soft_deleted", include_soft_deleted)
         if yield_by_chunk:
             execution_options.setdefault("yield_per", yield_by_chunk)
 
@@ -197,7 +184,7 @@ class SQLAlchemyRepository(
         self,
         conditions: t.Sequence[ColumnExpr] = (),
         for_update: bool = False,
-        include_inactive: bool = False,
+        include_soft_deleted: bool = False,
     ) -> bool:
         """Return whether an object matching conditions exists.
 
@@ -207,8 +194,8 @@ class SQLAlchemyRepository(
         selectable = sa.sql.literal(True)
 
         execution_options = {}
-        if include_inactive:
-            execution_options.setdefault("include_inactive", include_inactive)
+        if include_soft_deleted:
+            execution_options.setdefault("include_soft_deleted", include_soft_deleted)
 
         statement = sa.select(selectable).where(*conditions)  # type: ignore
 
@@ -224,14 +211,14 @@ class SQLAlchemyRepository(
     #     values: t.Dict[str, t.Any],
     #     unique_columns: t.Sequence[ColumnExpr] = (),
     #     execution_options: t.Optional[t.Dict[str, t.Any]] = None,
-    #     include_inactive: bool = False,
+    #     include_soft_deleted: bool = False,
     # ) -> EntityT:
     #     """Add `data` to the collection."""
     #     selectable = self.model
 
     #     execution_options = {}
-    #     if include_inactive:
-    #         execution_options.setdefault("include_inactive", include_inactive)
+    #     if include_soft_deleted:
+    #         execution_options.setdefault("include_soft_deleted", include_soft_deleted)
 
     #     lookup_conditions = {field: val for field, val in values.items() if field in unique_columns}
     #     lookup_statement = sa.select(selectable).filter_by(*lookup_conditions)
@@ -263,8 +250,8 @@ class SQLAlchemyBulkRepository(AbstractBulkRepository, t.Generic[SessionT, Entit
 
     def bulk_insert(
         self,
-        values: t.Sequence[t.Dict[str, t.Any]] = (),
-        execution_options: t.Optional[t.Dict[str, t.Any]] = None,
+        values: t.Sequence[dict[str, t.Any]] = (),
+        execution_options: dict[str, t.Any] | None = None,
     ) -> sa.Result[t.Any]:
         statement = self.builder.bulk_insert(self.model, values)
         return self.session.execute(statement, execution_options=execution_options or {})
@@ -272,8 +259,8 @@ class SQLAlchemyBulkRepository(AbstractBulkRepository, t.Generic[SessionT, Entit
     def bulk_update(
         self,
         conditions: t.Sequence[ColumnExpr] = (),
-        values: t.Optional[t.Dict[str, t.Any]] = None,
-        execution_options: t.Optional[t.Dict[str, t.Any]] = None,
+        values: dict[str, t.Any] | None = None,
+        execution_options: dict[str, t.Any] | None = None,
     ) -> sa.Result[t.Any]:
         statement = self.builder.bulk_update(self.model, conditions, values)
         return self.session.execute(statement, execution_options=execution_options or {})
@@ -281,7 +268,7 @@ class SQLAlchemyBulkRepository(AbstractBulkRepository, t.Generic[SessionT, Entit
     def bulk_delete(
         self,
         conditions: t.Sequence[ColumnExpr] = (),
-        execution_options: t.Optional[t.Dict[str, t.Any]] = None,
+        execution_options: dict[str, t.Any] | None = None,
     ) -> sa.Result[t.Any]:
         statement = self.builder.bulk_delete(self.model, conditions)
         return self.session.execute(statement, execution_options=execution_options or {})

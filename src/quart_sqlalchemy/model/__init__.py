@@ -1,38 +1,37 @@
-from .columns import CreatedTimestamp
-from .columns import Json
-from .columns import PrimaryKey
-from .columns import UpdatedTimestamp
-from .custom_types import PydanticType
-from .custom_types import TZDateTime
-from .mixins import DynamicArgsMixin
-from .mixins import IdentityMixin
-from .mixins import RecursiveDictMixin
-from .mixins import ReprMixin
-from .mixins import setup_soft_delete_for_session
-from .mixins import SimpleDictMixin
-from .mixins import SoftDeleteMixin
-from .mixins import TableNameMixin
-from .mixins import TimestampMixin
-from .mixins import VersionMixin
+from .columns import CreatedTimestamp, Json, PrimaryKey, UpdatedTimestamp
+from .custom_types import PydanticType, TZDateTime
+from .mixins import (
+    DynamicArgsMixin,
+    IntIdMixin,
+    RecursiveDictMixin,
+    ReprMixin,
+    SimpleDictMixin,
+    SoftDeleteMixin,
+    TableNameMixin,
+    TimestampMixin,
+    UuidIdMixin,
+    VersionMixin,
+    setup_soft_delete_for_session,
+)
 from .model import Base
-
 
 __all__ = [
     "Base",
     "CreatedTimestamp",
     "DynamicArgsMixin",
-    "IdentityMixin",
+    "IntIdMixin",
     "Json",
     "PrimaryKey",
     "PydanticType",
     "RecursiveDictMixin",
     "ReprMixin",
-    "setup_soft_delete_for_session",
     "SimpleDictMixin",
     "SoftDeleteMixin",
+    "TZDateTime",
     "TableNameMixin",
     "TimestampMixin",
-    "TZDateTime",
     "UpdatedTimestamp",
+    "UuidIdMixin",
     "VersionMixin",
+    "setup_soft_delete_for_session",
 ]
