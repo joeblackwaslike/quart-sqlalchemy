@@ -1,0 +1,4 @@
+pr:
+  template: .github/pull_request_template.md
+  appendix: collapsed
+  publish_intent: false
